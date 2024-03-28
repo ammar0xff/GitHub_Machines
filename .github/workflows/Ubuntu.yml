@@ -1,4 +1,4 @@
-name: rdp
+name: Ubuntu-Latest
 on: workflow_dispatch
 jobs:
   Booting--:
