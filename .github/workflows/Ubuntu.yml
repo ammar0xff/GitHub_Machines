@@ -1,5 +1,5 @@
 name: Ubuntu-Latest
-on: workflow_call
+on: workflow_dispatch
 jobs:
   system:
     runs-on: ubuntu-latest
