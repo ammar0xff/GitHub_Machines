@@ -12,7 +12,7 @@ jobs:
       - name: Installing Gotty Web Terminal ..
         run:  sudo curl -sSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz ; sudo tar -xzvf gotty.tar.gz ; sudo rm gotty.tar.gz ; sudo mv gotty /usr/bin
       - name: Beautifying The Terminal ..
-        run: curl -sSL "https://raw.githubusercontent.com/ammar0xff/tmp/main/.github/workflows/.bashrc" > ~/.bashrc ; . ~/.bashrc
+        run: export TERM=xterm 
       - name: Running Gotty Web Terminal On Port 8080 ..
         run: gotty -w /bin/bash &
       - name: Installing Rclone ..
