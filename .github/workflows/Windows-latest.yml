@@ -13,7 +13,7 @@ jobs:
     - name: Extract
       run: Expand-Archive ngrok.zip
     - name: Auth
-      run: .\ngrok\ngrok.exe cr_2W7XbyEnUKx9YnLjW0vSdVHnFno
+      run: .\ngrok\ngrok.exe config add-authtoken 2W7XbyEnUKx9YnLjW0vSdVHnFno_5AFGsMt2PTRTucTDVxzV9
     - name: Enable TS
       run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
     - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
