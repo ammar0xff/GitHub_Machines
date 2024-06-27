@@ -5,6 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: changing the password ..
+        run: echo -e "19216811\n19216811" | sudo passwd runner
       - name: Updating & Cleaning ..
         run: cd ; sudo apt clean &&  sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && sudo apt update
       - name: Installing Gotty Web Terminal ..
