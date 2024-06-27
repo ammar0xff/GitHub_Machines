@@ -18,4 +18,4 @@ jobs:
       - name: Configuring Ngrok Token ..
         run: ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
       - name: Running Ngrok ..   
-        run: ngrok http --domain=coherent-mackerel-mentally.ngrok-free.app 80
+        run: ngrok http --domain=${{secrets.NGROK_DOMAIN}} 8080
