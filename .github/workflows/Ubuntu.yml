@@ -12,7 +12,7 @@ jobs:
       - name: Installing Gotty Web Terminal ..
         run:  echo "1234" | sudo -S echo "ROOTED!!" ; sudo curl -sSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz ; sudo tar -xzvf gotty.tar.gz ; sudo rm gotty.tar.gz ; sudo mv gotty /usr/bin
       - name: Beautifying The Terminal ..
-        run: cd; ls ; TERM=xterm ; rm -rf .bashrc ; git clone "https://github.com/ammar0xff/My-Lettel-Servers" && mv My-Lettel-Servers/.github/workflows/.bashrc . && source .bashrc && source ~/.bashrc ; sudo rm /home/team/.bashrc ; sudo cp ~/.bashrc /home/team/.bashrc
+        run: cd; ls ; TERM=xterm ; rm -rf .bashrc ; git clone "https://github.com/ammar0xff/My-Lettel-Servers" && mv My-Lettel-Servers/.github/workflows/.bashrc . && source .bashrc && source ~/.bashrc ; sudo rm /home/team/.bashrc ; sudo cp ~/.bashrc /home/team/.bashrc ; cd ; touch ~/.sudo_as_admin_successful
       - name: Running Gotty Web Terminal On Port 8080 ..
         run: export TERM=xterm && cd && gotty -w sudo su team &
       - name: Installing Ngrok ..
