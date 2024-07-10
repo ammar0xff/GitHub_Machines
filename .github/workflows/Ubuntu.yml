@@ -14,7 +14,7 @@ jobs:
       - name: Beautifying The Terminal ..
         run: cd; ls ; TERM=xterm ; rm -rf .bashrc ; git clone "https://github.com/ammar0xff/My-Lettel-Servers" && mv My-Lettel-Servers/.github/workflows/.bashrc . && source .bashrc && source ~/.bashrc ; sudo rm /home/team/.bashrc ; sudo cp ~/.bashrc /home/team/.bashrc ; cd ; sudo touch /home/team/.sudo_as_admin_successful ; cd /home/team
       - name: Running Gotty Web Terminal On Port 8080 ..
-        run: export TERM=xterm && cd && gotty -w sudo su team &
+        run: cd /home/team export TERM=xterm && cd && gotty -w "sudo su team ; cd" &
       - name: Installing Ngrok ..
         run: sudo curl -sSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz" -o ngrok.tgz ; sudo tar -xzvf ngrok.tgz ; sudo rm ngrok.tgz ; sudo mv ngrok /usr/bin
       - name: Configuring Ngrok Token ..
