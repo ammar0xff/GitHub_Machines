@@ -3,6 +3,7 @@
 # for examples
 cd $HOME
 echo "1234" | sudo -S touch /tmp/.started
+clear
 echo "                                                                                                         ";
 echo "                                                                                                         ";
 echo "  ██████   ██████   ██████  ████████      ██████ ██████   █████   ██████ ██   ██ ██████  ██████  ███████ ";
