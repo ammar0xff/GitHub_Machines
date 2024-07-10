@@ -2,8 +2,6 @@
 # see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
 # for examples
 cd $HOME
-echo "1234" | sudo -S touch /tmp/.started
-clear
 echo "                                                                                                         ";
 echo "                                                                                                         ";
 echo "  ██████   ██████   ██████  ████████      ██████ ██████   █████   ██████ ██   ██ ██████  ██████  ███████ ";
@@ -13,6 +11,7 @@ echo "  ██   ██ ████  ██ ████  ██    ██     
 echo "  ██   ██  ██████   ██████     ██         ██████ ██   ██ ██   ██  ██████ ██   ██ ██████  ██   ██ ███████ ";
 echo "                                                                                                         ";
 echo "                                                                                                         ";
+echo "                                       Password: 1234                                                    ";
 
 # If not running interactively, don't do anything
 case $- in
