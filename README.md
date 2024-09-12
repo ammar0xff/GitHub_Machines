@@ -20,7 +20,7 @@ GitHub Actions by forking this repository and configuring access using ngrok.
     <li><a href="#features">Features</a>
     <li><a href="#built-With">Built With</a>
     <li><a href="#installation">Installation</a>
-    <li>Usage<a href="#usage">Usage</a>
+    <li><a href="#usage">Usage</a>
       <ul>
         <li><a href="#triggering-the-workflows">Triggering the Workflows</a></li>
         <li><a href="#accessing-machines">Accessing Machines</a>
