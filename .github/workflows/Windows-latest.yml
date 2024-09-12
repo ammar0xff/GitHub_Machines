@@ -1,4 +1,4 @@
-name: Windows-Latest
+name: Windows
 
 on: workflow_dispatch
 
