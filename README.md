@@ -106,7 +106,7 @@ Ubuntu, and macOS machines.
 "**P@ssw0rd!**"
 - Done.
 #### **Ubuntu**
-- Navigate to you Ngrok Domain and that's all
+- Navigate to your Ngrok Domain and that's all
 #### **Macos**
 - SOON..
 
@@ -120,11 +120,6 @@ If you want to modify the workflows locally, clone the forked repository to your
 git clone https://github.com/yourusername/GitHub_Machiens.git
 cd GitHub_Machiens
 ```
-
-
-
-
-
 
 <!-- CONTRIBUTING -->
 ## Contributing
