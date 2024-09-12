@@ -174,5 +174,5 @@ Project Link: [https://github.com/ammar0xff/GitHub_Machines](https://github.com/
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-* [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-* [m3u8-download](https://github.com/williamchanrico/m3u8-download)
+* [Gotty](https://github.com/yudai/gotty)
+* [Ngrok](https://ngrok.com/)
