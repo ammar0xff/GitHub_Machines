@@ -77,14 +77,14 @@ You need to configure the necessary GitHub Secrets to establish a secure connect
 1. Go to your forked repository.
 2. Navigate to **Settings > Secrets and variables > Actions**.
 3. Add the following secrets:
-- `NGROK_SECRET`: Your ngrok authentication token. [Get ngrok token here](https://ngrok.com).
+- `NGROK_TOKEN`: Your ngrok authentication token. [Get ngrok token here](https://ngrok.com).
 - `NGROK_DOMAIN`: A custom domain (optional) or ngrok subdomain to use for secure access.
 
 Example:
 
 | Secret Name | Description |
 |----------------|-------------------------------------|
-| `NGROK_SECRET` | Your ngrok authentication token |
+| `NGROK_TOKEN`  | Your ngrok authentication token |
 | `NGROK_DOMAIN` | Optional, specify ngrok subdomain |
 
 > Note: if your Ngrok account dosen't linked to a payment method, windows WILL NOT work.
