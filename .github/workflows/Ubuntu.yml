@@ -1,4 +1,4 @@
-name: Ubuntu-Latest
+name: Ubuntu
 on: workflow_dispatch
 jobs:
   system:
