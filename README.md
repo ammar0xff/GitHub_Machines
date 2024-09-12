@@ -1,11 +1,13 @@
 # GitHub Machines
 
-[![GitHub
-license](https://img.shields.io/github/license/yourusername/GitHub_Machiens)](https://github.com/ammar0xff/GitHub_Machiens/blob/main/LICENSE)
-[![GitHub
-issues](https://img.shields.io/github/issues/yourusername/GitHub_Machiens)](https://github.com/ammar0xff/GitHub_Machiens/issues)
-[![GitHub
-stars](https://img.shields.io/github/stars/yourusername/GitHub_Machiens)](https://github.com/ammar0xff/GitHub_Machiens/stargazers)
+
+<p>
+  <img src="https://img.shields.io/github/contributors/ammar0xff/GitHub_Machines.svg?style=for-the-badge&color=red" />
+  <img src="https://img.shields.io/github/forks/ammar0xff/GitHub_Machines.svg?style=for-the-badge&color=red" />
+  <img src="https://img.shields.io/github/stars/ammar0xff/GitHub_Machines?style=for-the-badge&color=red" />
+  <img src="https://img.shields.io/github/issues/ammar0xff/GitHub_Machines.svg?style=for-the-badge&color=red" />
+  <img src="https://img.shields.io/github/license/ammar0xff/GitHub_Machines?style=for-the-badge&color=red">
+</p>
 
 **GitHub_Machiens** is an automation solution that allows users to access Windows, Ubuntu, and macOS machines through
 GitHub Actions by forking this repository and configuring access using ngrok.
