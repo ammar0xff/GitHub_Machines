@@ -238,6 +238,4 @@ if ! shopt -oq posix; then
   fi
 fi
 #..SYSTEM-VARILES..#
-export OPENAI_API_KEY=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
-export ANDROID_HOME=/home/ammar/Android/Sdk
 export PATH=$PATH:~/.local/bin
