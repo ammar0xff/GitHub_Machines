@@ -85,7 +85,7 @@ Example:
 | Secret Name | Description |
 |----------------|-------------------------------------|
 | `NGROK_TOKEN`  | Your ngrok authentication token |
-| `NGROK_DOMAIN` | specify ngrok subdomain         |
+| `NGROK_DOMAIN` | Your ngrok subdomain            |
 
 > Note: if your Ngrok account dosen't linked to a payment method, windows WILL NOT work.
 
