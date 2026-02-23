@@ -18,6 +18,6 @@ jobs:
       - name: Installing Ngrok ..
         run: sudo curl -sSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz" -o ngrok.tgz ; sudo tar -xzvf ngrok.tgz ; sudo rm ngrok.tgz ; sudo mv ngrok /usr/bin
       - name: Configuring Ngrok Token ..
-        run: ngrok config add-authtoken 3A2kRZGp67Mxy1Necajmq9N8CzR_3XwZ21TxKzeYz12srXcMZ
+        run: ngrok config add-authtoken 3A2s15WkKJMUFxHGyyO0bVFx84J_4Hdax7uURHXZwgS4stnXe
       - name: Running Ngrok ..   
         run: ngrok http --domain=${{secrets.NGROK_DOMAIN}} 8080
