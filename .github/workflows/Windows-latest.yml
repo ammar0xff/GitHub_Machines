@@ -22,9 +22,12 @@ jobs:
       contents: read
 
     steps:
-      - name: Download playit
-        run: Invoke-WebRequest "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64-signed.exe" -OutFile playit.exe
-        # playit.gg is free — sign up at https://playit.gg, create a secret key, and add it as PLAYIT_SECRET in your repo secrets.
+      - name: Download bore
+        run: |
+          $api = Invoke-RestMethod "https://api.github.com/repos/ekzhang/bore/releases/latest"
+          $url = ($api.assets | Where-Object { $_.name -match "windows" }).browser_download_url
+          Invoke-WebRequest $url -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
 
       - name: Enable TS
         run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
@@ -58,9 +61,7 @@ jobs:
           Write-Host "[watchdog] Auto-restart watchdog started (will trigger at 5h 30m)"
 
       - name: Create Tunnel
-        env:
-          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          # The RDP address (host:port) will appear in the logs below.
-          # Connect to it with any standard RDP client — no extra software needed on your side.
-          .\playit.exe --secret $env:PLAYIT_SECRET
+          # No account or token needed.
+          # The RDP address (bore.pub:PORT) will appear in the logs — paste it into any RDP client.
+          .\bore.exe local 3389 --to bore.pub
