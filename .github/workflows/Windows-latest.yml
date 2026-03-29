@@ -22,14 +22,9 @@ jobs:
       contents: read
 
     steps:
-      - name: Download
-        run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-
-      - name: Extract
-        run: Expand-Archive ngrok.zip
-
-      - name: Auth
-        run: .\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_TOKEN }}
+      - name: Download playit
+        run: Invoke-WebRequest "https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64-signed.exe" -OutFile playit.exe
+        # playit.gg is free — sign up at https://playit.gg, create a secret key, and add it as PLAYIT_SECRET in your repo secrets.
 
       - name: Enable TS
         run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
@@ -63,4 +58,9 @@ jobs:
           Write-Host "[watchdog] Auto-restart watchdog started (will trigger at 5h 30m)"
 
       - name: Create Tunnel
-        run: .\ngrok\ngrok.exe tcp 3389
+        env:
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
+        run: |
+          # The RDP address (host:port) will appear in the logs below.
+          # Connect to it with any standard RDP client — no extra software needed on your side.
+          .\playit.exe --secret $env:PLAYIT_SECRET
