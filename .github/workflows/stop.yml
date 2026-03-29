@@ -1,0 +1,73 @@
+name: Stop Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which session to stop'
+        required: true
+        default: 'Ubuntu'
+        type: choice
+        options:
+          - Ubuntu
+          - Windows
+          - Both
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+
+    steps:
+      - name: Cancel Running Sessions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ inputs.target }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          cancel_workflow() {
+            local workflow_file="$1"
+            echo "[stop] Looking for running jobs in $workflow_file ..."
+
+            runs=$(curl -s \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$workflow_file/runs?status=in_progress&per_page=20")
+
+            run_ids=$(echo "$runs" | grep -o '"id": [0-9]*' | awk '{print $2}')
+
+            if [ -z "$run_ids" ]; then
+              echo "[stop] No active runs found for $workflow_file"
+              return
+            fi
+
+            for id in $run_ids; do
+              if [ "$id" = "$CURRENT_RUN_ID" ]; then
+                continue  # Don't cancel ourselves
+              fi
+              echo "[stop] Cancelling run $id ..."
+              curl -s -X POST \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$REPO/actions/runs/$id/cancel"
+              echo "[stop] Run $id cancelled."
+            done
+          }
+
+          case "$TARGET" in
+            Ubuntu)
+              cancel_workflow "Ubuntu.yml"
+              ;;
+            Windows)
+              cancel_workflow "Windows-latest.yml"
+              ;;
+            Both)
+              cancel_workflow "Ubuntu.yml"
+              cancel_workflow "Windows-latest.yml"
+              ;;
+          esac
+
+          echo "[stop] Done."

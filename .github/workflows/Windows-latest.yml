@@ -1,23 +1,67 @@
 name: Windows
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      auto_restart:
+        description: 'Auto-restart session before GitHub 6h limit (keeps your tunnel alive indefinitely)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   boot:
-
     runs-on: windows-latest
+    timeout-minutes: 355
+
+    permissions:
+      actions: write
+      contents: read
 
     steps:
-    - name: Download
-      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-    - name: Extract
-      run: Expand-Archive ngrok.zip
-    - name: Auth
-      run: .\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_TOKEN }}
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
-    - name: Create Tunnel
-      run: .\ngrok\ngrok.exe tcp 3389
+      - name: Download bore
+        run: |
+          $api = Invoke-RestMethod "https://api.github.com/repos/ekzhang/bore/releases/latest"
+          $url = ($api.assets | Where-Object { $_.name -match "windows" }).browser_download_url
+          Invoke-WebRequest $url -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+
+      - name: Enable TS
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+
+      - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+      - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+      - name: Auto-Restart Watchdog
+        if: inputs.auto_restart == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+        run: |
+          $watchdog = {
+            param($token, $repo, $ref)
+            # Sleep 5.5 hours then trigger a new session
+            Start-Sleep -Seconds 19800
+            $body = "{`"ref`":`"$ref`",`"inputs`":{`"auto_restart`":`"true`"}}"
+            Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/actions/workflows/Windows-latest.yml/dispatches" `
+              -Method POST `
+              -Headers @{ Authorization = "token $token"; Accept = "application/vnd.github.v3+json" } `
+              -Body $body `
+              -ContentType "application/json"
+            Write-Host "[watchdog] New session triggered. Reconnect via RDP in ~30s."
+          }
+          Start-Job -ScriptBlock $watchdog -ArgumentList $env:GH_TOKEN, $env:REPO, $env:REF | Out-Null
+          Write-Host "[watchdog] Auto-restart watchdog started (will trigger at 5h 30m)"
+
+      - name: Create Tunnel
+        run: |
+          # No account or token needed.
+          # The RDP address (bore.pub:PORT) will appear in the logs — paste it into any RDP client.
+          .\bore.exe local 3389 --to bore.pub

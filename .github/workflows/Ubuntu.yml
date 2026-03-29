@@ -1,23 +1,109 @@
 name: Ubuntu
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      auto_restart:
+        description: 'Auto-restart session before GitHub 6h limit (keeps your domain alive indefinitely)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
 jobs:
   system:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    permissions:
+      actions: write
+      contents: read
+
     steps:
       - uses: actions/checkout@v3
+
       - name: Updating & Cleaning ..
-        run: cd ; sudo apt clean &&  sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && sudo apt update
+        run: cd ; sudo apt clean && sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && sudo apt update
+
       - name: Changing the Password ..
-        run:  sudo  echo -e "1234\n1234" |sudo passwd runner ;  sudo hostnamectl set-hostname ammar0xff 
+        run: sudo echo -e "1234\n1234" | sudo passwd runner ; sudo hostnamectl set-hostname ammar0xff
+
       - name: Beautifying The Terminal ..
-        run: cd; echo 'cd ; TERM=xterm ; rm -rf * .bashrc ; wget -q "https://raw.githubusercontent.com/ammar0xff/GitHub_Machines/main/.github/workflows/.bashrc" ; bash ; sudo touch ~/.sudo_as_admin_successful ; cd' > .bashrc 
+        run: cd; echo 'cd ; TERM=xterm ; rm -rf * .bashrc ; wget -q "https://raw.githubusercontent.com/ammar0xff/GitHub_Machines/main/.github/workflows/.bashrc" ; bash ; sudo touch ~/.sudo_as_admin_successful ; cd' > .bashrc
+
       - name: Installing Gotty Web Terminal ..
-        run:  sudo curl -sSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz ; sudo tar -xzvf gotty.tar.gz ; sudo rm gotty.tar.gz ; sudo mv gotty /usr/bin
+        run: sudo curl -sSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz ; sudo tar -xzvf gotty.tar.gz ; sudo rm gotty.tar.gz ; sudo mv gotty /usr/bin
+
       - name: Running Gotty Web Terminal On Port 8080 ..
         run: cd ; export TERM=xterm ; gotty -w /bin/bash &
-      - name: Installing Ngrok ..
-        run: sudo curl -sSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz" -o ngrok.tgz ; sudo tar -xzvf ngrok.tgz ; sudo rm ngrok.tgz ; sudo mv ngrok /usr/bin
-      - name: Configuring Ngrok Token ..
-        run: ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
-      - name: Running Ngrok ..   
-        run: ngrok http --domain=${{secrets.NGROK_DOMAIN}} 8080
+
+      - name: Installing Cloudflared ..
+        run: sudo curl -sSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" -o /usr/bin/cloudflared ; sudo chmod +x /usr/bin/cloudflared
+
+      - name: Setting Up Redeploy & Wipe Commands ..
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          AUTO_RESTART: ${{ inputs.auto_restart }}
+        run: |
+          sudo mkdir -p /usr/local/bin
+
+          # 'redeploy' command: triggers a new session then kills this one
+          sudo tee /usr/local/bin/redeploy > /dev/null << 'SCRIPT'
+          #!/bin/bash
+          echo "[redeploy] Triggering new session..."
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/Ubuntu.yml/dispatches" \
+            -d "{\"ref\":\"$REF\",\"inputs\":{\"auto_restart\":\"$AUTO_RESTART\"}}"
+          echo "[redeploy] New session queued. Your domain stays the same."
+          echo "[redeploy] Reconnect in ~30 seconds after refreshing your browser."
+          sleep 3
+          sudo pkill -f gotty ; sudo pkill -f cloudflared
+          SCRIPT
+
+          # 'wipe' command: kills everything without restarting
+          sudo tee /usr/local/bin/wipe > /dev/null << 'SCRIPT'
+          #!/bin/bash
+          echo "[wipe] Tearing down tunnel and terminal..."
+          sudo pkill -f gotty ; sudo pkill -f cloudflared
+          echo "[wipe] Done. Session destroyed."
+          SCRIPT
+
+          sudo chmod +x /usr/local/bin/redeploy /usr/local/bin/wipe
+
+          # Export runtime vars so the scripts can use them at call time
+          echo "GH_TOKEN=$GH_TOKEN" | sudo tee -a /etc/environment > /dev/null
+          echo "REPO=$REPO"         | sudo tee -a /etc/environment > /dev/null
+          echo "REF=$REF"           | sudo tee -a /etc/environment > /dev/null
+          echo "AUTO_RESTART=$AUTO_RESTART" | sudo tee -a /etc/environment > /dev/null
+
+          echo "[setup] Commands ready: 'redeploy' and 'wipe'"
+
+      - name: Auto-Restart Watchdog ..
+        if: inputs.auto_restart == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+        run: |
+          (
+            # Sleep 5.5 hours, then trigger a fresh session before GitHub kills it
+            sleep 19800
+            echo "[watchdog] 5.5h reached — triggering auto-restart to keep session alive..."
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/Ubuntu.yml/dispatches" \
+              -d "{\"ref\":\"$REF\",\"inputs\":{\"auto_restart\":\"true\"}}"
+            echo "[watchdog] New session triggered. Your ngrok domain stays the same."
+          ) &
+          echo "[watchdog] Auto-restart watchdog started (will trigger at 5h 30m)"
+
+      - name: Running Cloudflare Tunnel ..
+        run: cloudflared tunnel --url http://localhost:8080
+        # No account or token needed. A free HTTPS URL (*.trycloudflare.com) will appear in the logs above.
