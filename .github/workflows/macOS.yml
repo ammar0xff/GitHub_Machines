@@ -96,7 +96,10 @@ jobs:
           EOF
           bash /tmp/console.env
           source /tmp/console.env && nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
-          sleep 3
+          for n in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsS http://127.0.0.1:8082/healthz; then break; fi
+            sleep 5
+          done
           curl -fsS http://127.0.0.1:8082/healthz || { echo "console failed to start"; cat /tmp/console.log; exit 1; }
 
       - name: Start tunnels
