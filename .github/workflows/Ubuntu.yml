@@ -68,9 +68,8 @@ jobs:
           nohup ttyd -W -p 8080 -b /term -t titleFixed="GitHub Machine - Ubuntu" bash > /tmp/ttyd.log 2>&1 &
           cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 -b /files > /tmp/filebrowser.log 2>&1 &
           PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-          PORT=8082 KIND=ubuntu LABEL="GitHub Machine - Ubuntu" USER=runner "PASS=${PASS}" \
-            VNC=1 NOVNC=/usr/share/novnc TTYD_PORT=8080 FB_PORT=8081 VNCWS_PORT=6080 \
-            nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
+          export PORT=8082 KIND=ubuntu LABEL="GitHub Machine - Ubuntu" USER=runner "PASS=${PASS}" VNC=1 NOVNC=/usr/share/novnc TTYD_PORT=8080 FB_PORT=8081 VNCWS_PORT=6080
+          nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
           sleep 5
           curl -fsS http://127.0.0.1:8082/healthz || { echo "console failed to start"; cat /tmp/console.log; exit 1; }
 

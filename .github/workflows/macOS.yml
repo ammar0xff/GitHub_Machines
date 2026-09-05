@@ -67,9 +67,8 @@ jobs:
           nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
           cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 -b /files > /tmp/filebrowser.log 2>&1 &
           PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-          PORT=8082 KIND=macos LABEL="GitHub Machine - macOS" USER=runner "PASS=${PASS}" \
-            VNC=0 TERM_STRIP=1 TTYD_PORT=8080 FB_PORT=8081 \
-            nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
+          export PORT=8082 KIND=macos LABEL="GitHub Machine - macOS" USER=runner "PASS=${PASS}" VNC=0 TERM_STRIP=1 TTYD_PORT=8080 FB_PORT=8081
+          nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
           sleep 3
           curl -fsS http://127.0.0.1:8082/healthz || { echo "console failed to start"; cat /tmp/console.log; exit 1; }
 
