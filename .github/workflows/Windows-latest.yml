@@ -57,6 +57,9 @@ jobs:
           # blocking wait. Windows runners tear down a step's processes when it completes,
           # so a "keep alive" step in a later shell could find nothing still running.
           $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
+          # URL-encoded copy for the embedded-Desktop link; the raw value stays for
+          # human-readable notices. Keeps '#'/'&'/'=' in custom passwords from truncating.
+          $PASS_ENC = [uri]::EscapeDataString($PASS)
           Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","-b","/term","cmd.exe") -WindowStyle Hidden
           $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
           Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081","-b","/files") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
@@ -112,7 +115,7 @@ jobs:
           Write-Output "::notice title=Web terminal::$BASE/term/"
           Write-Output "::notice title=File manager::$BASE/files  (user runner / password $PASS)"
           if ($r) {
-            $RDP_URL = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS"
+            $RDP_URL = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS_ENC"
             Write-Output "MAROHUB_DESKTOP=$RDP_URL"; Write-Output "::notice title=Desktop (embedded RDP)::$RDP_URL"
             Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop (native)::$r  (user runneradmin / password $PASS)"
           }
@@ -133,7 +136,7 @@ jobs:
             $ep["MAROHUB_TERMINAL"] = "$BASE/term/"
             $ep["MAROHUB_FILES"] = "$BASE/files"
             if ($r) {
-              $ep["MAROHUB_DESKTOP"] = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS"
+              $ep["MAROHUB_DESKTOP"] = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS_ENC"
               $ep["MAROHUB_RDP"] = $r
             }
             $state = @{ run_id = $env:GITHUB_RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
