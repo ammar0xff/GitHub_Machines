@@ -1,7 +1,6 @@
 'use strict';
 
 const tls = require('tls');
-const net = require('net');
 
 // ── RDCleanPath ASN.1 DER Constants ──
 const VERSION_1 = 3390; // 3389 + 1
@@ -305,11 +304,11 @@ function parseDestination(destination) {
 
 /**
  * Perform the RDCleanPath proxy handshake:
- * 1. TCP connect to RDP server
- * 2. Send X.224 Connection Request (raw TCP)
- * 3. Read X.224 Connection Confirm (raw TCP)
- * 4. TLS handshake (accept self-signed certs)
- * 5. Extract server certificates
+ * 1. TLS connect to RDP server (modern RDP: TLS is negotiated first, then
+ *    X.224 Connection Request is sent inside the TLS session)
+ * 2. Send X.224 Connection Request inside TLS
+ * 3. Read X.224 Connection Confirm inside TLS
+ * 4. Extract server certificates
  *
  * @param {string} host
  * @param {number} port
@@ -320,61 +319,49 @@ function performRDPHandshake(host, port, x224Request) {
     return new Promise((resolve, reject) => {
         const logPrefix = `[${host}:${port}]`;
 
-        // Step 1: TCP connect
-        const tcpSocket = net.createConnection({ host, port }, () => {
-            console.log(`${logPrefix} ✓ TCP connection established`);
+        const tlsSocket = tls.connect({
+            host,
+            port,
+            servername: host,
+            rejectUnauthorized: false, // RDP servers use self-signed certs
+            timeout: 15000,
+        }, () => {
+            console.log(`${logPrefix} ✓ TLS handshake completed`);
 
-            // Step 2: Send X.224 Connection Request over raw TCP
-            tcpSocket.write(x224Request, () => {
-                console.log(`${logPrefix} ✓ Sent X.224 Connection Request (${x224Request.length} bytes)`);
+            // Step 2: Send X.224 Connection Request inside the TLS session
+            tlsSocket.write(x224Request, () => {
+                console.log(`${logPrefix} ✓ Sent X.224 Connection Request inside TLS (${x224Request.length} bytes)`);
             });
-        });
 
-        tcpSocket.once('error', (err) => {
-            reject(new Error(`TCP connection failed: ${err.message}`));
-        });
+            // Step 3: Read X.224 Connection Confirm inside TLS
+            tlsSocket.once('data', (x224Response) => {
+                console.log(`${logPrefix} ✓ Received X.224 Connection Confirm inside TLS (${x224Response.length} bytes)`);
 
-        // Step 3: Read X.224 Connection Confirm
-        tcpSocket.once('data', (x224Response) => {
-            console.log(`${logPrefix} ✓ Received X.224 Connection Confirm (${x224Response.length} bytes)`);
+                if (x224Response.length === 0) {
+                    tlsSocket.destroy();
+                    reject(new Error('RDP server closed connection without X.224 response'));
+                    return;
+                }
 
-            if (x224Response.length === 0) {
-                tcpSocket.destroy();
-                reject(new Error('RDP server closed connection without X.224 response'));
-                return;
-            }
-
-            // Remove all listeners before upgrading to TLS
-            tcpSocket.removeAllListeners('error');
-            tcpSocket.removeAllListeners('data');
-
-            // Step 4: TLS handshake (accept self-signed certs, as RDP servers typically use them)
-            const tlsSocket = tls.connect(
-                {
-                    socket: tcpSocket,
-                    servername: host,
-                    rejectUnauthorized: false, // RDP servers use self-signed certs
-                },
-                () => {
-                    console.log(`${logPrefix} ✓ TLS handshake completed`);
-
-                    // Step 5: Extract server certificates
+                // Step 4: Extract server certificates
+                try {
                     const peerCert = tlsSocket.getPeerCertificate(true);
                     const certChain = extractCertChain(peerCert);
                     console.log(`${logPrefix} ✓ Extracted ${certChain.length} certificate(s)`);
-
                     resolve({ x224Response: Buffer.from(x224Response), certChain, tlsSocket });
+                } catch (err) {
+                    reject(new Error(`Certificate extraction failed: ${err.message}`));
                 }
-            );
-
-            tlsSocket.once('error', (err) => {
-                reject(new Error(`TLS handshake failed: ${err.message}`));
             });
         });
 
+        tlsSocket.once('error', (err) => {
+            reject(new Error(`TLS handshake failed: ${err.message}`));
+        });
+
         // Timeout for the whole handshake
-        tcpSocket.setTimeout(15000, () => {
-            tcpSocket.destroy();
+        tlsSocket.on('timeout', () => {
+            tlsSocket.destroy();
             reject(new Error('Connection timed out'));
         });
     });
