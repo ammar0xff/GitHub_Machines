@@ -99,7 +99,7 @@ function gh(path, method, body) {
   }
   return fetch("https://api.github.com" + path, opts).then((r) => {
     if (r.status === 404) throw new Error("Not found on GitHub (404)");
-    if (r.status === 401 || r.status === 403) throw new Error("Auth needed — add a token in Settings");
+    if (r.status === 401 || r.status === 403) throw new Error("Auth needed: add a token in Settings");
     if (!r.ok) throw new Error("GitHub " + r.status);
     return r.json().catch(() => ({}));
   });
@@ -170,7 +170,7 @@ async function startMachine(kind) {
     Object.assign(s, freshSession(), {
       status: "error",
       createdAt: Date.now(),
-      error: "Add a GitHub token in Settings — the machine can’t be launched or tracked without one.",
+      error: "Add a GitHub token in Settings. The machine can’t be launched or tracked without one.",
     });
     persistSessions();
     renderAll();
@@ -255,7 +255,7 @@ async function poller(kind) {
       const wasReady = Object.keys(s.endpoints).length > 0;
       if (wasReady) {
         s.status = "ended";
-        s.error = "Machine ended — " + (r.conclusion || "stopped") + ". View run ↗";
+        s.error = "Machine ended: " + (r.conclusion || "stopped") + ". View run ↗";
       } else {
         s.status = "ended";
         s.error = "Run " + (r.conclusion || "ended") + " before the machine could be used.";
@@ -280,7 +280,7 @@ async function poller(kind) {
         } catch (e) {
           const tokenIssue = String((e && e.message) || "") === "logs-auth";
           if (tokenIssue && !s.note) {
-            s.note = "Your token can’t read run logs — it needs Actions: Read access in Settings.";
+            s.note = "Your token can’t read run logs. It needs Actions: Read access in Settings.";
             persistSessions();
             renderAll();
           }
@@ -347,10 +347,10 @@ async function stopMachine(kind) {
 /* ---------------------------------- render -------------------------------- */
 
 function statusText(kind, s) {
-  if (s.status === "ready") return "Ready — pick a portal below";
+  if (s.status === "ready") return "Ready: pick a portal below";
   if (s.status === "idle") return "Tap Launch for a fresh machine";
   if (s.status === "launching") return "Launching…";
-  if (s.status === "queued") return "Queued — prep underway";
+  if (s.status === "queued") return "Queued: prep underway";
   if (s.status === "running") return s.runId ? "Running · #" + s.runId : "Running…";
   if (s.status === "success" || s.status === "ready") return "Ready";
   if (s.status === "ended") return "Machine ended";
@@ -471,7 +471,7 @@ function renderCard(kind) {
     body.appendChild(primaryBtn(kind, "Stop machine", "stop", () => stopMachine(kind)));
   } else if (isActive(s) || s.status === "completed") {
     body.appendChild(el("div", { className: "minirow" }, [
-      el("code", { className: "run-id" }, s.runId ? "#" + s.runId : "—"),
+      el("code", { className: "run-id" }, s.runId ? "#" + s.runId : "-"),
       el("a", {
         className: "btn ghost",
         href: s.htmlUrl || "#",
