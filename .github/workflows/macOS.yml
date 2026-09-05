@@ -46,7 +46,14 @@ jobs:
           done
           ENDPOINT=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/bore.log | head -n1)
           if [ -n "$ENDPOINT" ]; then
-            echo "::notice title=Gotty terminal::http://${ENDPOINT}  (lives until this run ends or ~6h)"
+            echo "::notice title=Web terminal::http://${ENDPOINT}"
+            {
+              echo "## macOS machine"
+              echo ""
+              echo "* Web terminal (any browser, any device): **http://${ENDPOINT}**"
+              echo ""
+              echo "> The machine lives until this run ends or ~6h, whichever comes first."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::error::bore did not report an endpoint. Tunnel log:"
             cat /tmp/bore.log

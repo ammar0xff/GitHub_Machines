@@ -1,23 +1,56 @@
 name: Windows
-
 on: workflow_dispatch
+concurrency:
+  group: windows-machine
+  cancel-in-progress: false
 
 jobs:
-  boot:
-
+  machine:
     runs-on: windows-latest
+    timeout-minutes: 435
 
     steps:
-    - name: Download bore
-      run: |
-        $api = Invoke-RestMethod "https://api.github.com/repos/ekzhang/bore/releases/latest"
-        $url = ($api.assets | Where-Object { $_.name -match "windows" -and $_.name -match "\.zip" } | Select-Object -First 1).browser_download_url
-        Invoke-WebRequest $url -OutFile bore.zip
-        Expand-Archive bore.zip -DestinationPath .
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
-    - name: Create Tunnel
-      run: .\bore.exe local 3389 --to bore.pub
+      - uses: actions/checkout@v4
+
+      - name: Download bore
+        run: |
+          Invoke-WebRequest "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip" -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+
+      - name: Download ttyd
+        run: |
+          Invoke-WebRequest "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe" -OutFile ttyd.exe
+
+      - name: Enable Remote Desktop
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+      - name: Start web terminal
+        run: |
+          Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","cmd.exe") -WindowStyle Hidden
+
+      - name: Create tunnels (keeps the machine alive)
+        run: |
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
+          Start-Sleep -Seconds 12
+
+          $web = $null
+          $rdp  = $null
+          if ((Get-Content bore8080.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $web = $matches[1] }
+          if ((Get-Content bore3389.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $rdp = $matches[1] }
+
+          if ($web) {
+            Write-Output "::notice title=Web terminal::http://$web"
+            Write-Output "::notice title=Remote Desktop::$rdp  (user runneradmin / password P@ssw0rd!)"
+            $summary = "## Windows machine`n`n* Web terminal (any browser, any device): **http://$web**`n`n* Remote Desktop (RDP client): connect to **$rdp** with user **runneradmin** and password **P@ssw0rd!**`n`n> The machine lives until this run ends or ~6h, whichever comes first."
+            $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            Write-Output "::warning::Could not determine tunnel endpoints; check bore*.err"
+            Get-Content bore8080.err,bore3389.err -ErrorAction SilentlyContinue
+          }
+
+          Wait-Process -Name bore -ErrorAction SilentlyContinue

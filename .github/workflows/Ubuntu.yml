@@ -12,11 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install gotty
+      - name: Install ttyd
         run: |
-          curl -fsSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz
-          tar -xzf gotty.tar.gz
-          sudo mv gotty /usr/local/bin
+          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" -o ttyd
+          chmod +x ttyd
+          sudo mv ttyd /usr/local/bin
 
       - name: Install bore
         run: |
@@ -27,7 +27,7 @@ jobs:
       - name: Start web terminal
         run: |
           export TERM=xterm
-          nohup gotty -w --title-format "GitHub Machine - Ubuntu" /bin/bash > /tmp/gotty.log 2>&1 &
+          nohup ttyd -W -p 8080 -t titleFixed="GitHub Machine - Ubuntu" bash > /tmp/ttyd.log 2>&1 &
           sleep 3
 
       - name: Start tunnel (keeps the machine alive)
@@ -40,7 +40,14 @@ jobs:
           done
           ENDPOINT=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/bore.log | head -n1)
           if [ -n "$ENDPOINT" ]; then
-            echo "::notice title=Gotty terminal::http://${ENDPOINT}  (lives until this run ends or ~6h)"
+            echo "::notice title=Web terminal::http://${ENDPOINT}"
+            {
+              echo "## Ubuntu machine"
+              echo ""
+              echo "* Web terminal (any browser, any device): **http://${ENDPOINT}**"
+              echo ""
+              echo "> The machine lives until this run ends or ~6h, whichever comes first."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::error::bore did not report an endpoint. Tunnel log:"
             cat /tmp/bore.log

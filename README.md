@@ -42,6 +42,8 @@ Actions runner and exposes it through a public tunnel — no account or token re
 
 - **Cross-Platform Support**: Gain access to Windows, Ubuntu, and macOS virtual machines using GitHub Actions.
 - **Easy Setup**: Fork the repository and run the workflow — no cloud account, token, or payment method needed.
+- **Universal Access**: Every machine opens a terminal in any modern browser, on any device — Windows, macOS, Linux,
+  Android, iOS, even Chromebooks. Windows additionally offers full Remote Desktop.
 - **Secure Access**: [bore](https://github.com/ekzhang/bore) creates an encrypted tunnel into the machine.
 - **Customizable Workflows**: Modify the GitHub Actions workflows to suit your requirements.
 - **Spins Down Automatically**: The machine stops when the run ends, so nothing lingers.
@@ -51,8 +53,9 @@ Actions runner and exposes it through a public tunnel — no account or token re
 <p>
   <img src="https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white" />
   <img src="https://img.shields.io/badge/GNU%20Bash-4EAA25?style=for-the-badge&logo=GNU%20Bash&logoColor=white" />
+  <img src="https://img.shields.io/badge/PowerShell-5391FE?style=for-the-badge&logo=powershell&logoColor=white" />
   <img src="https://img.shields.io/badge/bore-10B981?style=for-the-badge&logo=rust&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Gotty-4D4D4D?style=for-the-badge&logo=gnu-bash&logoColor=white"/>
+  <img src="https://img.shields.io/badge/ttyd-2496ED?style=for-the-badge&logo=docker&logoColor=white"/>
 </p>
 
 ## Installation
@@ -85,25 +88,35 @@ repositories and includes a monthly quota on private ones.
 
 ### Accessing the Machines
 
+Every run prints its access links in two places:
+
+1. A **notice** annotation and the run's **summary** page (`Summary` tab), as `http://bore.pub:PORT`.
+2. A browser-friendly title banner in the **Start tunnel** step of the run log.
+
+Because the tunnel URL is freshly generated per run, treat it as your key to the machine — share it the way you'd share a
+password.
+
 #### Windows
 
-1. Read the **Create Tunnel** step output in the workflow run — bore prints the public endpoint as `bore.pub:PORT`.
-2. Open an RDP client and connect to that address as `bore.pub:PORT`.
-3. Sign in with user **`runneradmin`** and password **`P@ssw0rd!`**.
+- **Browser terminal (recommended)**: open the `http://bore.pub:PORT` URL from the run summary — a `cmd` terminal loads
+  in any modern browser on any device.
+- **Full desktop via RDP**: open a remote desktop client (built into Windows, or the Microsoft Remote Desktop app for
+  macOS/iOS/Android) and connect to the `bore.pub:PORT` RDP endpoint from the run summary with user **`runneradmin`** and
+  password **`P@ssw0rd!`**. Some RDP clients need the port appended as `bore.pub:PORT`.
 
 #### Ubuntu
 
-1. Read the run annotations or the **Start tunnel** step in the workflow run. The endpoint is printed as
-   `http://bore.pub:PORT`.
-2. Open that URL in any browser — you get a terminal in the page (via Gotty), logged in as `runner`.
+1. Read the run summary or the **Start tunnel** step. The endpoint is printed as `http://bore.pub:PORT`.
+2. Open that URL in any browser — you get a `bash` terminal in the page (via ttyd), logged in as `runner`.
 
 #### macOS
 
-1. Same as Ubuntu: open the `http://bore.pub:PORT` URL printed in the **Start tunnel** step.
-2. A macOS terminal (Gotty) opens in the browser, logged in as `runner`.
+1. Read the run summary or the **Start tunnel** step. The endpoint is printed as `http://bore.pub:PORT`.
+2. Open that URL in any browser — a macOS `bash` terminal (via Gotty) opens in the page, logged in as `runner`.
 
 > Note: GitHub's macOS runner images require a paid plan for private repositories; public repositories can use them for
-> free within the Actions quota.
+> free within the Actions quota. If your network blocks non-standard ports, try a phone hotspot or VPN — the bore relay
+> uses a random high port.
 
 ## Customizing
 
@@ -114,8 +127,8 @@ git clone https://github.com/yourusername/GitHub_Machines.git
 cd GitHub_Machines
 ```
 
-- **Swap the terminal**: replace Gotty with any server you like (OpenSSH, code-server, VNC, ...) and forward the port
-  with the same `bore local <port> --to bore.pub` command.
+- **Swap the terminal**: replace ttyd/Gotty with any server you like (OpenSSH, code-server, VNC, ...) and forward the
+  port with the same `bore local <port> --to bore.pub` command.
 - **Use a fixed address**: run your own relay (`bore server`) and pass `--to yourhost:port`, or switch to ngrok with the
   `NGROK_TOKEN`/`NGROK_DOMAIN` secrets above.
 - **Change the access credentials**: update the password in `Windows-latest.yml` (or run Gotty with `--credential`).
@@ -152,5 +165,6 @@ Project Link: [https://github.com/ammar0xff/GitHub_Machines](https://github.com/
 
 ## Acknowledgments
 
-- [Gotty](https://github.com/yudai/gotty) — terminal in the browser
+- [ttyd](https://github.com/tsl0922/ttyd) — terminal in the browser (Ubuntu and Windows)
+- [Gotty](https://github.com/yudai/gotty) — terminal in the browser (macOS)
 - [Bore](https://github.com/ekzhang/bore) — dead-simple tunneling
