@@ -85,6 +85,7 @@ jobs:
           $env:TERM_STRIP = "0"
           $env:TTYD_PORT = "8080"
           $env:FB_PORT = "8081"
+          $env:RELAY_LOG = "C:\relay.log"
           Start-Process -FilePath "node" -ArgumentList "$env:GITHUB_WORKSPACE\machine-console\console.js" -WindowStyle Hidden
           $ok = $false
           for ($n = 0; $n -lt 12 -and -not $ok; $n++) {

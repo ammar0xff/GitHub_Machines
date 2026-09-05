@@ -10,6 +10,18 @@ const path = require("path");
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
 
+// Optional relay log: tee every console.log/error to a file so machine-side
+// relay diagnostics are fetchable (filebrowser serves C:\ as /files).
+if (process.env.RELAY_LOG) {
+  const logFile = process.env.RELAY_LOG;
+  const tee = (orig) => (...args) => {
+    try { fs.appendFileSync(logFile, new Date().toISOString() + " " + args.map(String).join(" ") + "\n"); } catch (_) {}
+    return orig(...args);
+  };
+  console.log = tee(console.log);
+  console.error = tee(console.error);
+}
+
 const PORT = Number(process.env.PORT || 8082);
 const KIND = process.env.KIND || "machine";
 const LABEL = process.env.LABEL || "GitHub Machine";
