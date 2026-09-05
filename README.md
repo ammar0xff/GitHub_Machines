@@ -83,9 +83,13 @@ free for public repositories and includes a monthly quota on private ones.
 
 ### Web App (recommended)
 
-The app lives in `app/` and is plain HTML/CSS/JS — no build step. Host the folder anywhere, e.g. on GitHub Pages. It
-keeps the machine list and your settings in `localStorage`, updates live via the Actions API, and never stores secrets
-server-side.
+The app lives in `app/` and is plain HTML/CSS/JS — no build step. It's deployed to GitHub Pages by the
+`deploy.yml` workflow at:
+
+**https://ammar0xff.github.io/GitHub_Machines/**
+
+It keeps the machine list and your settings in `localStorage`, updates live via the Actions API, and never stores
+secrets server-side.
 
 Config lives behind the **Settings** sheet:
 
