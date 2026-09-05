@@ -27,7 +27,7 @@ jobs:
       - name: Download filebrowser
         run: |
           Invoke-WebRequest "https://github.com/filebrowser/filebrowser/releases/download/v2.63.23/windows-amd64-filebrowser.zip" -OutFile filebrowser.zip
-          Expand-Archive filebrowser.zip -DestinationPath .
+          Expand-Archive filebrowser.zip -DestinationPath filebrowser-dist
 
       - name: Configure filebrowser
         run: |

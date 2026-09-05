@@ -35,7 +35,7 @@ jobs:
 
       - name: Install noVNC
         run: |
-          curl -fsSL "https://github.com/novnc/noVNC/releases/download/v1.5.0/noVNC-1.5.0.tar.gz" -o novnc.tar.gz
+          curl -fsSL "https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz" -o novnc.tar.gz
           tar -xzf novnc.tar.gz
           sudo mkdir -p /usr/share/novnc
           sudo cp -r noVNC-1.5.0/* /usr/share/novnc/
