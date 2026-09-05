@@ -1,6 +1,7 @@
 'use strict';
 
 const tls = require('tls');
+const net = require('net');
 
 // ── RDCleanPath ASN.1 DER Constants ──
 const VERSION_1 = 3390; // 3389 + 1
@@ -305,17 +306,18 @@ function parseDestination(destination) {
 /**
  * Perform the RDCleanPath proxy handshake against an RDP server.
  *
- * The machine workflow forces the SSL security layer (SecurityLayer=2) with
- * NLA disabled, so the runner is expected to answer a TLS ClientHello first
- * and then accept the X.224 Connection Request inside the TLS session:
- *   1. TLS connect to the RDP server.
- *   2. Send X.224 Connection Request inside TLS.
- *   3. Read the X.224 Connection Confirm inside TLS.
- *   4. Extract the self-signed server certificate for the browser client.
- *
- * If a server is found that speaks plaintext instead (selectedProtocol = 0 in
- * the confirm), the raw socket is relayed without a certificate — a fallback
- * only; it is not expected on these runners.
+ * The runner forces the SSL security layer (SecurityLayer=2) with NLA off.
+ * The confirmed exchange observed against a live runner is:
+ *   1. Plaintext TCP connect and send the client's X.224 Connection Request.
+ *   2. Read the X.224 Connection Confirm (plaintext). It negotiates either
+ *      RDP-native (protocol 0) or SSL/HYBRID (protocol 1/2); a failure CC
+ *      (type 0x03, e.g. SSL_REQUIRED) also means "upgrade".
+ *   3. For SSL/HYBRID, upgrade the SAME socket to TLS and extract the
+ *      self-signed server certificate. Afterwards the server simply waits —
+ *      the browser client drives MCS directly over the relayed TLS, no second
+ *      X.224 Connection Request is sent.
+ *   4. For native (protocol 0), relay the raw plaintext socket with an empty
+ *      certificate chain.
  *
  * @param {string} host
  * @param {number} port
@@ -338,45 +340,64 @@ function performRDPHandshake(host, port, x224Request) {
             resolve(value);
         };
 
-        const tlsSocket = tls.connect({
-            host,
-            port,
-            servername: host,
-            rejectUnauthorized: false, // RDP servers use self-signed certs
-        }, () => {
-            console.log(`${logPrefix} ✓ TLS handshake completed`);
-            tlsSocket.setTimeout(15000);
-            tlsSocket.write(x224Request, () => {
-                console.log(`${logPrefix} ✓ Sent X.224 Connection Request inside TLS (${x224Request.length} bytes)`);
-            });
+        const tcpSocket = net.createConnection({ host, port }, () => {
+            console.log(`${logPrefix} ✓ TCP established; sending X.224 Connection Request (${x224Request.length} bytes)`);
+            tcpSocket.setTimeout(15000);
+            tcpSocket.write(x224Request);
         });
 
-        tlsSocket.once('error', (err) => {
-            fail(`TLS handshake failed: ${err.message}`);
+        tcpSocket.once('error', (err) => {
+            fail(`TCP/RDP connection failed: ${err.message}`);
         });
 
-        tlsSocket.on('timeout', () => {
-            tlsSocket.destroy();
+        tcpSocket.on('timeout', () => {
+            tcpSocket.destroy();
             fail('Connection timed out');
         });
 
-        tlsSocket.once('data', (x224Response) => {
-            console.log(`${logPrefix} ✓ Received X.224 Connection Confirm inside TLS (${x224Response.length} bytes)`);
+        tcpSocket.once('data', (x224Response) => {
+            console.log(`${logPrefix} ✓ Received X.224 Connection Confirm (${x224Response.length} bytes)`);
 
             if (x224Response.length === 0) {
-                tlsSocket.destroy();
+                tcpSocket.destroy();
                 fail('RDP server closed connection without X.224 response');
                 return;
             }
 
-            try {
-                const peerCert = tlsSocket.getPeerCertificate(true);
-                const certChain = extractCertChain(peerCert);
-                console.log(`${logPrefix} ✓ Extracted ${certChain.length} certificate(s)`);
-                ok({ x224Response: Buffer.from(x224Response), certChain, tlsSocket });
-            } catch (err) {
-                fail(`Certificate extraction failed: ${err.message}`);
+            const cc = Buffer.from(x224Response);
+            let needsTls = true;
+            if (cc[5] === 0xd0 /* CC */ && cc.length >= 19) {
+                const selected = cc.readUInt32LE(15);
+                console.log(`${logPrefix} negotiated protocol=${selected}`);
+                if (selected === 0) {
+                    needsTls = false; // RDP-native security over plaintext
+                }
+            } else {
+                // 0x03 = Negotiation Failure (e.g. SSL_REQUIRED) — still upgrade.
+                console.log(`${logPrefix} negotiation type=0x${cc[5].toString(16)} — attempting TLS upgrade`);
             }
+
+            if (!needsTls) {
+                console.log(`${logPrefix} ✓ Server accepted plaintext RDP — relaying raw socket (no certificate)`);
+                ok({ x224Response: cc, certChain: [], tlsSocket: tcpSocket });
+                return;
+            }
+
+            const tlsSocket = tls.connect({ socket: tcpSocket, servername: host, rejectUnauthorized: false }, () => {
+                console.log(`${logPrefix} ✓ TLS upgrade completed (${tlsSocket.getProtocol()})`);
+                try {
+                    const peerCert = tlsSocket.getPeerCertificate(true);
+                    const certChain = extractCertChain(peerCert);
+                    console.log(`${logPrefix} ✓ Extracted ${certChain.length} certificate(s)`);
+                    ok({ x224Response: cc, certChain, tlsSocket });
+                } catch (err) {
+                    fail(`Certificate extraction failed: ${err.message}`);
+                }
+            });
+
+            tlsSocket.once('error', (err) => {
+                fail(`TLS upgrade failed: ${err.message}`);
+            });
         });
     });
 }
