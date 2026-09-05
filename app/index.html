@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Machine Launcher</title>
+    <meta name="description" content="One-tap temporary Ubuntu, Windows and macOS machines. Terminal, files and desktop — straight from a browser." />
+    <meta name="theme-color" content="#0b0f14" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="launcher-dot" aria-hidden="true"></span>
+        <h1>Machine Launcher</h1>
+      </div>
+      <div class="topbar-side">
+        <code id="repo-chip" class="repo-chip">owner/repo</code>
+        <button id="settings-btn" class="btn ghost" aria-label="Open settings">Settings</button>
+      </div>
+    </header>
+
+    <main id="machines" class="machines" aria-busy="false"></main>
+
+    <footer class="foot">
+      <span>Machines self-destruct when their GitHub run ends (~6h lifetime).</span>
+      <span id="lastsync" class="muted"></span>
+    </footer>
+
+    <div id="overlay" class="overlay hidden"></div>
+
+    <aside id="settings" class="sheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="settings-title">
+      <div class="sheet-head">
+        <h2 id="settings-title">Settings</h2>
+        <button id="sheet-close" class="btn ghost chip" aria-label="Close settings">&times;</button>
+      </div>
+
+      <label class="field">
+        <span>Repository</span>
+        <input id="set-repo" class="input" type="text" autocapitalize="off" spellcheck="false" placeholder="owner/repo" />
+      </label>
+
+      <label class="field">
+        <span>GitHub token</span>
+        <input id="set-token" class="input" type="password" autocomplete="off" placeholder="ghp_… requires Actions read + write" />
+      </label>
+
+      <label class="field">
+        <span>Machine password</span>
+        <input id="set-password" class="input" type="text" autocomplete="off" placeholder="P@ssw0rd!" />
+      </label>
+
+      <label class="row field">
+        <input id="set-debug" type="checkbox" />
+        <span>Show raw run data under each card</span>
+      </label>
+
+      <div class="sheet-actions">
+        <button id="sheet-save" class="btn primary">Save</button>
+        <button id="sheet-drop" class="btn ghost">Clear saved machines</button>
+      </div>
+      <p id="save-note" class="note" role="status" aria-live="polite"></p>
+      <p class="hint">
+        Your token is stored only in this browser (localStorage) and sent only to GitHub. A token with
+        <strong>Actions: Read and write</strong> is required to launch and track machines. The repo must have the
+        <code>.github/workflows/Ubuntu.yml</code>, <code>Windows-latest.yml</code> and <code>macOS.yml</code>
+        workflows on <code>main</code>.
+      </p>
+    </aside>
+
+    <script src="app.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
