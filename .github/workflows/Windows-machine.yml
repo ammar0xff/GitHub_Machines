@@ -26,20 +26,6 @@ jobs:
         run: |
           Invoke-WebRequest "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe" -OutFile ttyd.exe
 
-      - name: Download filebrowser
-        run: |
-          Invoke-WebRequest "https://github.com/filebrowser/filebrowser/releases/download/v2.63.23/windows-amd64-filebrowser.zip" -OutFile filebrowser.zip
-          Expand-Archive filebrowser.zip -DestinationPath filebrowser-dist
-
-      - name: Configure filebrowser
-        run: |
-          $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
-          New-Item -ItemType Directory -Force -Path "$env:TEMP\fb" | Out-Null
-          Push-Location "$env:TEMP\fb"
-          & $fb config init
-          & $fb users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" --perm.admin
-          Pop-Location
-
       - name: Enable Remote Desktop
         run: |
           # Force the SSL (TLS) security layer with NLA off. This makes the
@@ -119,8 +105,6 @@ jobs:
           # human-readable notices. Keeps '#'/'&'/'=' in custom passwords from truncating.
           $PASS_ENC = [uri]::EscapeDataString($PASS)
           Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","-b","/term","cmd.exe") -WindowStyle Hidden
-          $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
-          Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081","-b","/files") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
 
           $env:PORT = "8082"
           $env:KIND = "windows"
@@ -133,7 +117,6 @@ jobs:
           $env:RDP_ADDR = $r
           $env:TERM_STRIP = "0"
           $env:TTYD_PORT = "8080"
-          $env:FB_PORT = "8081"
           $env:RELAY_LOG = "C:\relay.log"
           Start-Process -FilePath "node" -ArgumentList "$env:GITHUB_WORKSPACE\machine-console\console.js" -WindowStyle Hidden
           $ok = $false
@@ -199,7 +182,6 @@ jobs:
           Write-Output "CONSOLE_URL=$BASE"
           Write-Output "MAROHUB_CONSOLE=$BASE"; Write-Output "::notice title=Machine console::$BASE"
           Write-Output "::notice title=Web terminal::$BASE/term/"
-          Write-Output "::notice title=File manager::$BASE/files  (user runner / password $PASS)"
           if ($r) {
             $RDP_URL = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS_ENC"
             Write-Output "MAROHUB_DESKTOP=$RDP_URL"; Write-Output "::notice title=Desktop (embedded RDP)::$RDP_URL"
@@ -211,7 +193,7 @@ jobs:
           }
 
           $summary = "## Windows machine`n`n"
-          $summary += "* **Console** (one URL - Desktop / Terminal / Files): $BASE`n"
+          $summary += "* **Console** (one URL - Desktop / Terminal): $BASE`n"
           if ($r) { $summary += "* **Desktop** (embedded RDP): $BASE/rdp/index.html - user ``runneradmin``, password ``$PASS`` `n" }
           $summary += "* **Desktop** (native RDP client): $r - user ``runneradmin``, password ``$PASS`` `n"
           if ($l) { $summary += "* **Desktop** (LCXL Remote Desk / WebRTC probe): $l - user ``runneradmin``, password ``$PASS`` `n" }
@@ -225,7 +207,6 @@ jobs:
             $ep = @{}
             $ep["MAROHUB_CONSOLE"] = $BASE
             $ep["MAROHUB_TERMINAL"] = "$BASE/term/"
-            $ep["MAROHUB_FILES"] = "$BASE/files"
             if ($r) {
               $ep["MAROHUB_DESKTOP"] = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS_ENC"
               $ep["MAROHUB_RDP"] = $r

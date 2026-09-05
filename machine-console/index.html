@@ -69,22 +69,17 @@
   </header>
   <p id="rdp">Remote Desktop (RDP): <code>{{RDPADDR}}</code>&nbsp;<button data-copy="{{RDPADDR}}">copy</button></p>
   <nav>
-    <button data-tab="desktop" aria-selected="true">Desktop</button>
-    <button data-tab="term" aria-selected="false">Terminal</button>
-    <button data-tab="files" aria-selected="false">Files</button>
+    <button data-tab="desktop" aria-selected="false" hidden>Desktop</button>
+    <button data-tab="term" aria-selected="true">Terminal</button>
   </nav>
   <main><iframe id="view" title="Machine view"></iframe></main>
   <script>
-    const vnc = {{VNC}} === "1";
     const rdp = {{RDP}} === "1";
     const tabs = {
-      desktop: vnc
-        ? "/vnc/vnc.html?path=/vnc-websockify&autoconnect=1&reconnect=1&resize=scale"
-        : rdp
-          ? "/rdp/index.html?user={{RDP_USER}}&pass=" + encodeURIComponent("{{PASS}}")
-          : null,
+      desktop: rdp
+        ? "/rdp/index.html?user={{RDP_USER}}&pass=" + encodeURIComponent("{{PASS}}")
+        : null,
       term: "/term/",
-      files: "/files",
     };
     const rdpBar = document.getElementById("rdp");
     const nav = document.querySelector("nav");
@@ -92,10 +87,10 @@
     if (rdp && rdpBar) {
       rdpBar.style.display = "block";
     }
-    if (!tabs.desktop) {
-      nav.querySelector('[data-tab="desktop"]').style.display = "none";
-      nav.querySelector('[data-tab="term"]').click();
+    if (tabs.desktop) {
+      nav.querySelector('[data-tab="desktop"]').hidden = false;
     }
+    view.src = tabs.desktop || tabs.term;
     document.querySelectorAll("#rdp button, [data-copy]").forEach((b) => {
       b.addEventListener("click", () => {
         const text = b.getAttribute("data-copy") || rdp.querySelector("code").textContent.trim();
@@ -121,7 +116,6 @@
       nav.querySelectorAll("button[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
       view.src = tabs[btn.dataset.tab];
     });
-    if (tabs.desktop) view.src = tabs.desktop;
   </script>
 </body>
 </html>

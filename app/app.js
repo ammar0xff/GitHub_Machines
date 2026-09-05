@@ -3,31 +3,26 @@
 
 const MACHINES = {
   ubuntu: { name: "Ubuntu", workflow: ".github/workflows/Ubuntu.yml", osClass: "ubuntu" },
-  windows: { name: "Windows", workflow: ".github/workflows/Windows-latest.yml", osClass: "windows" },
+  windows: { name: "Windows", workflow: ".github/workflows/Windows-machine.yml", osClass: "windows" },
   macos: { name: "macOS", workflow: ".github/workflows/macOS.yml", osClass: "macos" },
 };
 
 const PORTALS = [
   { key: "MAROHUB_CONSOLE", label: "Console" },
   { key: "MAROHUB_TERMINAL", label: "Terminal" },
-  { key: "MAROHUB_FILES", label: "Files" },
   { key: "MAROHUB_DESKTOP", label: "Desktop" },
   { key: "MAROHUB_RDP", label: "RDP" },
 ];
 const PORTAL_LABELS = {
   MAROHUB_CONSOLE: "Console",
   MAROHUB_TERMINAL: "Terminal",
-  MAROHUB_FILES: "Files",
   MAROHUB_DESKTOP: "Desktop",
   MAROHUB_RDP: "RDP",
 };
 const MACHINE_CREDS = {
-  ubuntu: [{ label: "Files · Desktop", user: "runner" }],
-  windows: [
-    { label: "Files", user: "runner" },
-    { label: "Desktop", user: "runneradmin" },
-  ],
-  macos: [{ label: "Files · Desktop", user: "runner" }],
+  ubuntu: [{ label: "Machine", user: "runner" }],
+  windows: [{ label: "Desktop", user: "runneradmin" }],
+  macos: [{ label: "Machine", user: "runner" }],
 };
 
 // Desktop transport each machine uses for its embedded Desktop portal: "vnc" or "rdp".

@@ -50,7 +50,7 @@ Actions runner and exposes it through a public tunnel — no account or token re
 - **Customizable Workflows**: Modify the GitHub Actions workflows to suit your requirements.
 - **Spins Down Automatically**: The machine stops when the run ends, so nothing lingers.
 - **One-Tap Launcher App**: the bundled `app/` is a standalone PWA (no build step) with three machine cards that start,
-  track, and stop machines, and surface Terminal / Files / Desktop access links.
+  track, and stop machines, and surface Terminal / Desktop access links.
 
 ### Built With
 
@@ -97,7 +97,7 @@ Config lives behind the **Settings** sheet:
 |-------------|----------|-------------------------------------------------------------------|
 | Repo        | yes      | `owner/repo` (your fork, e.g. `you/GitHub_Machines`)              |
 | Token       | yes      | a Personal Access Token with **Actions: Read and write** scope    |
-| Password    | optional | how you'll log into Desktop/Files; shown next to the links        |
+| Password    | optional | how you'll log into Desktop; shown next to the links              |
 
 Launching and tracking both call the GitHub API, so the token is required even for public repos. To keep the machine
 alive, the run holds a blocking `wait` step instead of ending.
@@ -105,13 +105,13 @@ alive, the run holds a blocking `wait` step instead of ending.
 Each card shows a live status strip (run number, current step, ticking countdown) and, once the machine is up, action
 tiles:
 
-| Machine | Terminal | Files          | Desktop                 |
-|---------|----------|----------------|-------------------------|
-| Ubuntu  | bash     | file manager   | noVNC (browser)         |
-| Windows | cmd      | —              | RDP (`host:port`)       |
-| macOS   | bash     | —              | VNC (`host:port`)       |
+| Machine | Terminal | Desktop             |
+|---------|----------|---------------------|
+| Ubuntu  | bash     | —                   |
+| Windows | cmd      | RDP (`host:port`)   |
+| macOS   | bash     | —                   |
 
-- **Open** jumps straight to the access link in a new tab; **copy** grabs the address (handy for RDP/VNC `host:port`).
+- **Open** jumps straight to the access link in a new tab; **copy** grabs the address (handy for RDP `host:port`).
 - **Stop machine** cancels the run; the machine dies with it.
 
 > The machine lives until the run finishes, you press **Stop machine**, or the `bore.pub` relay closes the tunnel
@@ -175,7 +175,7 @@ cd GitHub_Machines
   port with the same `bore local <port> --to bore.pub` command.
 - **Use a fixed address**: run your own relay (`bore server`) and pass `--to yourhost:port`, or switch to ngrok with the
   `NGROK_TOKEN`/`NGROK_DOMAIN` secrets above.
-- **Change the access credentials**: update the password in `Windows-latest.yml` (or run Gotty with `--credential`).
+- **Change the access credentials**: update the password in `Windows-machine.yml` (or run Gotty with `--credential`).
 
 ## Contributing
 

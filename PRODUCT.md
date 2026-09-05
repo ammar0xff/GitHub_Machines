@@ -15,7 +15,7 @@ All of them are impatient and expect the app to tell them the truth about state 
 ## Product Purpose
 
 One-tap launcher into temporary GitHub Actions machines. Pick Ubuntu, Windows, or macOS; the app triggers the
-workflow, tracks the run, and hands over three live access points — terminal, files, desktop — plus their URLs and a
+workflow, tracks the run, and hands over the live access points — terminal, desktop — plus their URLs and a
 way to stop the machine. Success looks like: tap once, ~60 seconds later a working machine link; nothing to install
 on the client; a clearly ticking lifetime on every machine card.
 
@@ -35,7 +35,7 @@ raw. Three words: precise, direct, utilitarian.
 
 1. **Show the truth.** Numbered run, step names, live status — the app is a cockpit over the Actions API, not a filter.
 2. **One tap in, one tap out.** Start and Stop are the two primary actions; everything else is secondary.
-3. **Links are the product.** Terminal/Files/Desktop URLs are the deliverable — make them copyable and obvious at a glance.
+3. **Links are the product.** Terminal/Desktop URLs are the deliverable — make them copyable and obvious at a glance.
 4. **Respect the clock.** A 6-hour lifetime is the UX's heartbeat: expose countdown, warn near expiry, expire promptly.
 5. **Zero-config default, full config when needed.** Prefill `ammar0xff/GitHub_Machines`; never require more than a token to start.
 

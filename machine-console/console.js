@@ -1,5 +1,5 @@
 "use strict";
-// Single-URL machine console: MeshCentral-style tabs (Desktop / Terminal / Files)
+// Single-URL machine console: MeshCentral-style tabs (Desktop / Terminal)
 // behind one HTTPS origin. Serves an inline manager page and reverse-proxies the
 // per-service daemons, so the whole machine lives at one address with no mixed
 // content and no frame-busting headers.
@@ -11,7 +11,7 @@ const crypto = require("crypto");
 const { EventEmitter } = require("events");
 
 // Optional relay log: tee every console.log/error to a file so machine-side
-// relay diagnostics are fetchable (filebrowser serves C:\ as /files).
+// relay diagnostics are fetchable at /relaylog.
 if (process.env.RELAY_LOG) {
   const logFile = process.env.RELAY_LOG;
   const tee = (orig) => (...args) => {
@@ -27,7 +27,6 @@ const KIND = process.env.KIND || "machine";
 const LABEL = process.env.LABEL || "GitHub Machine";
 const USER = process.env.USER || "runner";
 const PASS = process.env.PASS || "";
-const VNC = (process.env.VNC || "1") === "1";
 // Windows: enable the in-process RDCleanPath browser RDP client (ironrdp-wasm)
 // on WebSocket root / and /rdp/relay, plus the /rdp/ viewer static files.
 const RDP = (process.env.RDP || "0") === "1";
@@ -37,10 +36,7 @@ const RDP_DIR = path.join(__dirname, "rdp");
 // macOS uses gotty (no -b flag) — strip the /term prefix on its way through so its
 // client (which builds WS from location.pathname) keeps working at /term/ws.
 const TERM_STRIP = (process.env.TERM_STRIP || "0") === "1";
-const NOVNC_DIR = process.env.NOVNC || "/usr/share/novnc";
 const TTYD_PORT = Number(process.env.TTYD_PORT || 8080);
-const FB_PORT = Number(process.env.FB_PORT || 8081);
-const WS_PORT = Number(process.env.VNCWS_PORT || 6080);
 const ROOT = __dirname;
 
 const MIME = {
@@ -72,29 +68,9 @@ function serveConsole(res) {
       .split("{{PASS}}").join(PASS)
       .split("{{RDP}}").join(RDP ? "1" : "0")
       .split("{{RDP_USER}}").join(RDP_USER)
-      .split("{{RDPADDR}}").join(RDP_ADDR)
-      .split("{{VNC}}").join(VNC ? "1" : "0");
+      .split("{{RDPADDR}}").join(RDP_ADDR);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     res.end(out);
-  });
-}
-
-function serveStatic(res, rel) {
-  const file = path.normalize(path.join(NOVNC_DIR, rel));
-  if (!file.startsWith(path.normalize(NOVNC_DIR))) {
-    res.writeHead(403, { "Content-Type": "text/plain" });
-    res.end("forbidden");
-    return;
-  }
-  fs.readFile(file, (err, data) => {
-    if (err) {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("not found");
-      return;
-    }
-    const mime = MIME[path.extname(file).toLowerCase()] || "application/octet-stream";
-    res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-store" });
-    res.end(data);
   });
 }
 
@@ -117,7 +93,7 @@ function proxyWeb(req, res, port) {
   const upstream = http.request({
     host: "127.0.0.1",
     port,
-    path: port === TTYD_PORT ? termPath(req.url) : req.url,
+    path: termPath(req.url),
     method: req.method,
     headers,
   }, (upres) => {
@@ -135,8 +111,6 @@ function proxyWeb(req, res, port) {
 
 function upgradeTarget(url) {
   if (url.startsWith("/term")) return TTYD_PORT;
-  if (url.startsWith("/files")) return FB_PORT;
-  if (url.startsWith("/vnc-websockify")) return WS_PORT;
   return null;
 }
 
@@ -316,9 +290,6 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (u.startsWith("/term")) return proxyWeb(req, res, TTYD_PORT);
-  if (u.startsWith("/files")) return proxyWeb(req, res, FB_PORT);
-  if (u.startsWith("/vnc-websockify")) return proxyWeb(req, res, WS_PORT);
-  if (u.startsWith("/vnc/")) return serveStatic(res, u.slice("/vnc".length).split("?")[0]);
   if (RDP && u.startsWith("/rdp")) return serveRdpStatic(res, u.slice("/rdp".length).split("?")[0]);
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("not found");
@@ -337,7 +308,7 @@ server.on("upgrade", (req, socket, head) => {
   }
   const client = net.connect(port, "127.0.0.1", () => {
     const headers = Object.assign({}, req.headers, { host: "127.0.0.1:" + port });
-    const pathToForward = port === TTYD_PORT ? termPath(req.url) : req.url;
+    const pathToForward = termPath(req.url);
     let raw = req.method + " " + pathToForward + " HTTP/1.1\r\n";
     for (const k of Object.keys(headers)) raw += k + ": " + String(headers[k]) + "\r\n";
     raw += "\r\n";
