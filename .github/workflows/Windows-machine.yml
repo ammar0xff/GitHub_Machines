@@ -56,7 +56,7 @@ jobs:
           Start-Sleep -Seconds 3
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" -Force)
 
-      - name: Download & configure LCXL Remote Desk
+      - name: Download and configure LCXL Remote Desk
         run: |
           # LCXL Remote Desk (lcxl-remote/lcxl-remote-desk-web, Apache-2.0): WebRTC-based
           # remote desktop. The Tauri bundle ships lcxl-remote-desk-server.exe + the
