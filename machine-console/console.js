@@ -308,6 +308,13 @@ const server = http.createServer((req, res) => {
     res.end("ok");
     return;
   }
+  if (u === "/relaylog" && process.env.RELAY_LOG) {
+    fs.readFile(process.env.RELAY_LOG, (err, data) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(err ? "no relay log yet" : data);
+    });
+    return;
+  }
   if (u.startsWith("/term")) return proxyWeb(req, res, TTYD_PORT);
   if (u.startsWith("/files")) return proxyWeb(req, res, FB_PORT);
   if (u.startsWith("/vnc-websockify")) return proxyWeb(req, res, WS_PORT);
