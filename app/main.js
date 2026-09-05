@@ -21,7 +21,9 @@ let settingsOpen = false;
 
 function openSettings() {
   settingsOpen = true;
-  $("settings").classList.add("open");
+  const sheet = $("settings");
+  sheet.classList.add("open");
+  sheet.setAttribute("aria-hidden", "false");
   $("overlay").classList.remove("hidden");
   $("set-repo").value = config.repo || "";
   $("set-token").value = config.token || "";
@@ -31,7 +33,9 @@ function openSettings() {
 }
 function closeSettings() {
   settingsOpen = false;
-  $("settings").classList.remove("open");
+  const sheet = $("settings");
+  sheet.classList.remove("open");
+  sheet.setAttribute("aria-hidden", "true");
   $("overlay").classList.add("hidden");
 }
 function saveSettings() {
@@ -70,6 +74,9 @@ function wireSettings() {
     flashSave("Saved");
   });
   $("sheet-drop").addEventListener("click", clearSessions);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && settingsOpen) closeSettings();
+  });
 }
 
 /* ------------------------------ boundary clock ------------------------------ */
