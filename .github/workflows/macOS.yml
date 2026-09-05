@@ -99,23 +99,22 @@ jobs:
             echo "> The machine lives until this run ends or ~6h, whichever comes first."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish state
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          T="${T}" F="${F}" V="${V}" PASS="${PASS}"
-          BODY="{\"run_id\":\"$RUN_ID\",\"endpoints\":{"
-          BODY="$BODY\"MAROHUB_TERMINAL\":\"http://$T\""
-          [ -n "$F" ] && BODY="$BODY,\"MAROHUB_FILES\":\"http://$F\""
-          [ -n "$V" ] && BODY="$BODY,\"MAROHUB_DESKTOP\":\"http://$V/vnc.html\""
-          BODY="$BODY}}"
-          gh api -X PUT \
-            "repos/${{ github.repository }}/contents/.machine-state/macos.json" \
-            -f "message=machine state" \
-            -f "branch=machine-state/macos" \
-            -f "content=$(printf '%s' "$BODY" | base64 | tr -d '\n')" \
-            --jq '.content.sha'
+          # Publish live endpoints so the app can read them while the run is alive (run
+          # logs are only archived after the run completes). Every step is guarded so a
+          # publish hiccup can never take the machine down.
+          mkdir -p .machine-state
+          BODY="{\"run_id\":\"${GITHUB_RUN_ID}\",\"endpoints\":{"
+          BODY="${BODY}\"MAROHUB_TERMINAL\":\"http://${T}\""
+          [ -n "$F" ] && BODY="${BODY},\"MAROHUB_FILES\":\"http://${F}\""
+          [ -n "$V" ] && BODY="${BODY},\"MAROHUB_DESKTOP\":\"http://${V}\""
+          BODY="${BODY}}}"
+          printf '%s' "$BODY" > .machine-state/macos.json
+          git config user.name "github-machine" >/dev/null 2>&1 || true
+          git config user.email "github-machine@users.noreply.github.com" >/dev/null 2>&1 || true
+          git checkout --orphan machine-state/macos >/dev/null 2>&1 || true
+          git add .machine-state/macos.json >/dev/null 2>&1 || true
+          git commit -m "machine state: ${GITHUB_RUN_ID}" >/dev/null 2>&1 || true
+          git push -f origin machine-state/macos >/dev/null 2>&1 || echo "state publish skipped"
 
       - name: Keep the machine alive
         run: |

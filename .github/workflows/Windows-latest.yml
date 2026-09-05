@@ -93,41 +93,25 @@ jobs:
           $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Publish state
-        env:
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          $pass = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-          $ep = @{}
-          if ($t) { $ep["MAROHUB_TERMINAL"] = "http://$t" }
-          if ($f) { $ep["MAROHUB_FILES"] = "http://$f" }
-          if ($r) { $ep["MAROHUB_RDP"] = "$r" }
-          $state = @{ run_id = $env:RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
-          $repo = "$env:GITHUB_REPOSITORY"
-          $base64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($state))
-          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = "application/vnd.github+json" }
-          $uri = "https://api.github.com/repos/$repo/git/refs"
-          $branchRef = "refs/heads/machine-state/windows"
+          # Publish live endpoints so the app can read them while the run is alive (run
+          # logs are only archived after the run completes). All commands are guarded so
+          # a publish hiccup can never take the machine down.
           try {
-            $head = Invoke-RestMethod -Method GET "$uri/heads/machine-state/windows" -Headers $headers
-          } catch { $head = $null }
-          $commit = Invoke-RestMethod -Method POST "https://api.github.com/repos/$repo/git/trees" `
-            -Headers $headers -ContentType "application/json" `
-            -Body (@{ base_tree = if ($head) { $head.object.sha } else { $null }; tree = @(@{ path = ".machine-state/windows.json"; mode = "100644"; type = "blob"; content = $state }) } | ConvertTo-Json -Depth 6 -Compress)
-          $commitBody = @{
-            message  = "machine state"
-            tree     = $commit.sha
-            parents  = if ($head) { @($head.object.sha) } else { @() }
-          } | ConvertTo-Json -Depth 6 -Compress
-          $newCommit = Invoke-RestMethod -Method POST "https://api.github.com/repos/$repo/git/commits" `
-            -Headers $headers -ContentType "application/json" -Body $commitBody
-          if ($head) {
-            Invoke-RestMethod -Method PATCH "$uri/heads/machine-state/windows" -Headers $headers `
-              -ContentType "application/json" `
-              -Body (@{ sha = $newCommit.sha; force = $true } | ConvertTo-Json -Compress) | Out-Null
-          } else {
-            Invoke-RestMethod -Method POST $uri -Headers $headers -ContentType "application/json" `
-              -Body (@{ ref = $branchRef; sha = $newCommit.sha } | ConvertTo-Json -Compress) | Out-Null
+            $ep = @{}
+            if ($t) { $ep["MAROHUB_TERMINAL"] = "http://$t" }
+            if ($f) { $ep["MAROHUB_FILES"] = "http://$f" }
+            if ($r) { $ep["MAROHUB_RDP"] = "$r" }
+            $state = @{ run_id = $env:GITHUB_RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
+            New-Item -ItemType Directory -Force -Path .machine-state | Out-Null
+            Set-Content -Path .machine-state/windows.json -Value $state -NoNewline -Encoding utf8
+            git config user.name "github-machine"
+            git config user.email "github-machine@users.noreply.github.com"
+            git checkout --orphan machine-state/windows 2>$null
+            git add .machine-state/windows.json
+            git commit -m "machine state: $env:GITHUB_RUN_ID" 2>$null
+            git push -f origin machine-state/windows 2>$null
+          } catch {
+            Write-Output "state publish skipped: $($_.Exception.Message)"
           }
 
       - name: Keep the machine alive
