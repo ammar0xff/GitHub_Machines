@@ -306,100 +306,122 @@ function parseDestination(destination) {
 /**
  * Perform the RDCleanPath proxy handshake against an RDP server.
  *
- * The runner forces the SSL security layer (SecurityLayer=2) with NLA off.
- * The confirmed exchange observed against a live runner is:
- *   1. Plaintext TCP connect and send the client's X.224 Connection Request.
- *   2. Read the X.224 Connection Confirm (plaintext). It negotiates either
- *      RDP-native (protocol 0) or SSL/HYBRID (protocol 1/2); a failure CC
- *      (type 0x03, e.g. SSL_REQUIRED) also means "upgrade".
- *   3. For SSL/HYBRID, upgrade the SAME socket to TLS and extract the
- *      self-signed server certificate. Afterwards the server simply waits —
- *      the browser client drives MCS directly over the relayed TLS, no second
- *      X.224 Connection Request is sent.
- *   4. For native (protocol 0), relay the raw plaintext socket with an empty
- *      certificate chain.
+ * Windows runner hosts vary at the OS level, so two server modes must be
+ * supported:
+ *
+ *   A) Plaintext-first ("dance"): send the X.224 Connection Request over raw
+ *      TCP, read the Connection Confirm (plaintext), then upgrade the SAME
+ *      socket to TLS and extract the self-signed server certificate.
+ *      Afterwards the server simply waits — the browser client drives MCS
+ *      directly over the relayed TLS.
+ *
+ *   B) TLS-first: the server answers a TLS ClientHello immediately and expects
+ *      the X.224 Connection Request INSIDE TLS. A plaintext CR gets rejected
+ *      (ECONNRESET). Complete TLS, send the CR as the first TLS application
+ *      data, read the Connection Confirm (decrypted), extract the certificate.
+ *
+ * The dance is attempted first, then TLS-first on a fresh socket. The selected
+ * protocol is captured from the Connection Confirm; RDSTLS was already removed
+ * by `forceSslNegotiation`, so SSL(1) is expected.
  *
  * @param {string} host
  * @param {number} port
- * @param {Buffer} x224Request - X.224 Connection Request bytes
- * @returns {Promise<{ x224Response: Buffer, certChain: Buffer[], tlsSocket: tls.TLSSocket }>}
+ * @param {Buffer} x224Request - X.224 Connection Request bytes (SSL-only)
+ * @returns {Promise<{ x224Response: Buffer, certChain: Buffer[], tlsSocket: tls.TLSSocket, pending: Buffer[] }>}
  */
 function performRDPHandshake(host, port, x224Request) {
-    return new Promise((resolve, reject) => {
-        const logPrefix = `[${host}:${port}]`;
+    const logPrefix = `[${host}:${port}]`;
+    const servername = net.isIP(host) ? undefined : host;
+    const ccWaitMs = 4000;
+    const tlsWaitMs = 6000;
 
-        let finished = false;
-        const fail = (msg) => {
-            if (finished) return;
-            finished = true;
-            reject(new Error(msg));
-        };
-        const ok = (value) => {
-            if (finished) return;
-            finished = true;
-            resolve(value);
-        };
+    function attemptDance() {
+        console.log(`${logPrefix} mode A (plaintext CR → CC → TLS upgrade)`);
+        return new Promise((resolve, reject) => {
+            let finished = false;
+            const fail = (msg) => { if (!finished) { finished = true; reject(new Error(msg)); } };
+            const ok = (value) => { if (!finished) { finished = true; resolve(value); } };
 
-        const tcpSocket = net.createConnection({ host, port }, () => {
-            console.log(`${logPrefix} ✓ TCP established; sending X.224 Connection Request (${x224Request.length} bytes)`);
-            tcpSocket.setTimeout(15000);
-            tcpSocket.write(x224Request);
-        });
-
-        tcpSocket.once('error', (err) => {
-            fail(`TCP/RDP connection failed: ${err.message}`);
-        });
-
-        tcpSocket.on('timeout', () => {
-            tcpSocket.destroy();
-            fail('Connection timed out');
-        });
-
-        tcpSocket.once('data', (x224Response) => {
-            console.log(`${logPrefix} ✓ Received X.224 Connection Confirm (${x224Response.length} bytes)`);
-
-            if (x224Response.length === 0) {
-                tcpSocket.destroy();
-                fail('RDP server closed connection without X.224 response');
-                return;
-            }
-
-            const cc = Buffer.from(x224Response);
-            let needsTls = true;
-            if (cc[5] === 0xd0 /* CC */ && cc.length >= 19) {
-                const selected = cc.readUInt32LE(15);
-                console.log(`${logPrefix} negotiated protocol=${selected}`);
-                if (selected === 0) {
-                    needsTls = false; // RDP-native security over plaintext
-                }
-            } else {
-                // 0x03 = Negotiation Failure (e.g. SSL_REQUIRED) — still upgrade.
-                console.log(`${logPrefix} negotiation type=0x${cc[5].toString(16)} — attempting TLS upgrade`);
-            }
-
-            if (!needsTls) {
-                console.log(`${logPrefix} ✓ Server accepted plaintext RDP — relaying raw socket (no certificate)`);
-                ok({ x224Response: cc, certChain: [], tlsSocket: tcpSocket });
-                return;
-            }
-
-            const tlsSocket = tls.connect({ socket: tcpSocket, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false }, () => {
-                console.log(`${logPrefix} ✓ TLS upgrade completed (${tlsSocket.getProtocol()})`);
-                try {
-                    const peerCert = tlsSocket.getPeerCertificate(true);
-                    const certChain = extractCertChain(peerCert);
-                    console.log(`${logPrefix} ✓ Extracted ${certChain.length} certificate(s)`);
-                    ok({ x224Response: cc, certChain, tlsSocket });
-                } catch (err) {
-                    fail(`Certificate extraction failed: ${err.message}`);
-                }
+            const tcpSocket = net.createConnection({ host, port }, () => {
+                tcpSocket.setTimeout(ccWaitMs + 2000);
+                tcpSocket.write(x224Request);
             });
+            tcpSocket.once('error', (err) => fail(`TCP/RDP connection failed: ${err.message}`));
+            tcpSocket.on('timeout', () => { tcpSocket.destroy(); fail('dance timed out'); });
 
-            tlsSocket.once('error', (err) => {
-                fail(`TLS upgrade failed: ${err.message}`);
+            tcpSocket.once('data', (x224Response) => {
+                const cc = Buffer.from(x224Response);
+                if (cc.length === 0) { tcpSocket.destroy(); fail('RDP server closed without X.224 response'); return; }
+                console.log(`${logPrefix} mode A ✓ X.224 Connection Confirm (${cc.length} bytes)`);
+
+                let needsTls = true;
+                if (cc[5] === 0xd0 /* CC */ && cc.length >= 19) {
+                    const selected = cc.readUInt32LE(15);
+                    console.log(`${logPrefix} negotiated protocol=${selected} (mode A)`);
+                    if (selected === 0) needsTls = false;
+                } else {
+                    console.log(`${logPrefix} negotiation type=0x${cc[5].toString(16)} — attempting TLS upgrade`);
+                }
+
+                if (!needsTls) {
+                    ok({ x224Response: cc, certChain: [], tlsSocket: tcpSocket, pending: [] });
+                    return;
+                }
+
+                const tlsSocket = tls.connect({ socket: tcpSocket, servername, rejectUnauthorized: false }, () => {
+                    tlsSocket.setTimeout(0);
+                    console.log(`${logPrefix} mode A ✓ TLS upgrade completed (${tlsSocket.getProtocol()})`);
+                    try {
+                        const peerCert = tlsSocket.getPeerCertificate(true);
+                        const certChain = extractCertChain(peerCert);
+                        console.log(`${logPrefix} mode A ✓ Extracted ${certChain.length} certificate(s)`);
+                        ok({ x224Response: cc, certChain, tlsSocket, pending: [] });
+                    } catch (err) {
+                        fail(`Certificate extraction failed: ${err.message}`);
+                    }
+                });
+                tlsSocket.once('error', (err) => fail(`TLS upgrade failed: ${err.message}`));
             });
         });
-    });
+    }
+
+    function attemptTlsFirst() {
+        console.log(`${logPrefix} mode B (TLS first, CR inside TLS)`);
+        return new Promise((resolve, reject) => {
+            let finished = false;
+            const fail = (msg) => { if (!finished) { finished = true; reject(new Error(msg)); } };
+            const ok = (value) => { if (!finished) { finished = true; resolve(value); } };
+
+            const tcpSocket = net.createConnection({ host, port });
+            tcpSocket.once('error', (err) => fail(`TCP/RDP connection failed: ${err.message}`));
+
+            const tlsSocket = tls.connect({ socket: tcpSocket, servername, rejectUnauthorized: false });
+            tlsSocket.setTimeout(tlsWaitMs, () => { tlsSocket.destroy(); fail('TLS-first timed out waiting for Connection Confirm'); });
+            tlsSocket.once('error', (err) => fail(`TLS handshake failed: ${err.message}`));
+            tlsSocket.once('secureConnect', () => {
+                console.log(`${logPrefix} mode B ✓ TLS established (${tlsSocket.getProtocol()}); sending CR inside TLS`);
+                tlsSocket.write(x224Request);
+                tlsSocket.once('data', (x224Response) => {
+                    const cc = Buffer.from(x224Response);
+                    console.log(`${logPrefix} mode B ✓ X.224 Connection Confirm (${cc.length} bytes)`);
+                    if (cc[5] === 0xd0 /* CC */ && cc.length >= 19) {
+                        console.log(`${logPrefix} negotiated protocol=${cc.readUInt32LE(15)} (mode B)`);
+                    }
+                    tlsSocket.removeAllListeners('timeout');
+                    try {
+                        const peerCert = tlsSocket.getPeerCertificate(true);
+                        const certChain = extractCertChain(peerCert);
+                        console.log(`${logPrefix} mode B ✓ Extracted ${certChain.length} certificate(s)`);
+                        ok({ x224Response: cc, certChain, tlsSocket, pending: [] });
+                    } catch (err) {
+                        fail(`Certificate extraction failed: ${err.message}`);
+                    }
+                });
+            });
+        });
+    }
+
+    return attemptDance().catch(() => attemptTlsFirst());
 }
 
 /**
