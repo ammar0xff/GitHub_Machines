@@ -11,8 +11,22 @@ const PORTALS = [
   { key: "MAROHUB_TERMINAL", label: "Terminal" },
   { key: "MAROHUB_FILES", label: "Files" },
   { key: "MAROHUB_DESKTOP", label: "Desktop" },
-  { key: "MAROHUB_RDP", label: "RDP" },
+  { key: "MAROHUB_RDP", label: "Desktop" },
 ];
+const PORTAL_LABELS = {
+  MAROHUB_TERMINAL: "Terminal",
+  MAROHUB_FILES: "Files",
+  MAROHUB_DESKTOP: "Desktop",
+  MAROHUB_RDP: "Desktop",
+};
+const MACHINE_CREDS = {
+  ubuntu: [{ label: "Files · Desktop", user: "runner" }],
+  windows: [
+    { label: "Files", user: "runner" },
+    { label: "Desktop", user: "runneradmin" },
+  ],
+  macos: [{ label: "Files · Desktop", user: "runner" }],
+};
 
 const LIFETIME_MS = 6 * 60 * 60 * 1000; // ~6h bore relay window
 const LS_CONFIG = "machine-launcher-config";
@@ -439,37 +453,71 @@ function fallbackCopy(text) {
 }
 
 function portalButtons(kind, s) {
-  return PORTALS.map((p) => {
+  const seen = {};
+  const items = [];
+  for (const p of PORTALS) {
     const url = s.endpoints[p.key];
+    if (!url) continue;
+    const label = PORTAL_LABELS[p.key];
+    if (seen[label]) continue;
+    seen[label] = true;
+    items.push({ label, url });
+  }
+  return items.map(({ label, url }) => {
     const isHttp = /^https?:\/\//.test(url || "");
-    const tile = el("div", { className: "portal" + (url ? "" : " muted") });
-    tile.appendChild(el("span", { className: "portal-label" }, p.label));
-    if (url) {
-      tile.appendChild(el("code", { className: "portal-url" }, url.replace(/^https?:\/\//, "")));
-      if (isHttp) {
-        tile.appendChild(el("a", {
-          className: "portal-open",
-          href: url,
-          target: "_blank",
-          rel: "noopener",
-          title: "Open " + p.label + " in a new tab",
-        }, "open"));
-      }
-      const copy = el("button", {
-        className: "portal-copy" + (isHttp ? "" : " wide"),
-        title: "Copy " + p.label + " address",
-      }, isHttp ? "copy" : "copy addr");
-      copy.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        copyText(url);
-      });
-      tile.appendChild(copy);
-    } else {
-      tile.appendChild(el("span", { className: "portal-na" }, "n/a"));
+    const tile = el("div", { className: "portal" });
+    tile.appendChild(el("span", { className: "portal-label" }, label));
+    tile.appendChild(el("code", { className: "portal-url" }, url.replace(/^https?:\/\//, "")));
+    if (isHttp) {
+      tile.appendChild(el("a", {
+        className: "portal-open",
+        href: url,
+        target: "_blank",
+        rel: "noopener",
+        title: "Open " + label + " in a new tab",
+      }, "open"));
     }
+    const copy = el("button", {
+      className: "portal-copy" + (isHttp ? "" : " wide"),
+      title: "Copy " + label + " address",
+    }, isHttp ? "copy" : "copy addr");
+    copy.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      copyText(url);
+    });
+    tile.appendChild(copy);
     return tile;
   });
+}
+
+function credRows(kind) {
+  return (MACHINE_CREDS[kind] || [{ label: "user", user: "runner" }]).map((c) => ({
+    label: c.label,
+    user: c.user,
+    pass: config.password || "",
+  }));
+}
+
+function credentialsBlock(kind) {
+  const rows = credRows(kind);
+  const block = el("div", { className: "creds" }, [
+    el("span", { className: "creds-head" }, "Sign in"),
+  ]);
+  for (const r of rows) {
+    const row = el("div", { className: "creds-row" });
+    row.appendChild(el("code", { className: "creds-service" }, r.label));
+    row.appendChild(el("code", { className: "creds-user" }, r.user));
+    row.appendChild(el("code", { className: "creds-pass" }, r.pass));
+    const copy = el("button", {
+      className: "creds-copy",
+      title: "Copy " + r.label + " credentials",
+    }, "copy");
+    copy.addEventListener("click", () => copyText(r.user + " / " + r.pass));
+    row.appendChild(copy);
+    block.appendChild(row);
+  }
+  return block;
 }
 
 function renderAll() {
@@ -511,6 +559,7 @@ function renderCard(kind) {
   if (s.status === "ready" && Object.keys(s.endpoints).length) {
     body.appendChild(el("div", { className: "portals" }, portalButtons(kind, s)));
     body.appendChild(el("p", { className: "lifetime" }, "This machine stops at " + lifetimeUntil(s) + " or when the run ends"));
+    body.appendChild(credentialsBlock(kind));
     body.appendChild(primaryBtn(kind, "Stop machine", "stop", () => stopMachine(kind)));
   } else if (isActive(s) || s.status === "completed") {
     body.appendChild(el("div", { className: "minirow" }, [
