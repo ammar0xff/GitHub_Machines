@@ -64,7 +64,7 @@ jobs:
           cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 > /tmp/filebrowser.log 2>&1 &
           sleep 5
 
-      - name: Start tunnels (keeps the machine alive)
+      - name: Start tunnels
         run: |
           bore local 8080 --to bore.pub > /tmp/t8080.log 2>&1 &
           bore local 8081 --to bore.pub > /tmp/t8081.log 2>&1 &
@@ -95,4 +95,8 @@ jobs:
             echo "> The machine lives until this run ends or ~6h, whichever comes first."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          wait
+      - name: Keep the machine alive
+        run: |
+          # Bore tunnels started in the previous step keep running as this job stays open,
+          # so GitHub emits this run only when it is cancelled or the 6h window ends.
+          tail -f /dev/null

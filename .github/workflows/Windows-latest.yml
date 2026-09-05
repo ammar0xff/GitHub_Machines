@@ -51,7 +51,7 @@ jobs:
           $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
           Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
 
-      - name: Create tunnels (keeps the machine alive)
+      - name: Create tunnels
         run: |
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8081","--to","bore.pub") -RedirectStandardOutput bore8081.out -RedirectStandardError bore8081.err
@@ -91,4 +91,8 @@ jobs:
           $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+      - name: Keep the machine alive
+        run: |
+          # Bore tunnels started in the previous step keep running as this job stays open,
+          # so GitHub emits this run only when it is cancelled or the 6h window ends.
           Wait-Process -Name bore -ErrorAction SilentlyContinue
