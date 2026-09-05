@@ -29,6 +29,15 @@ jobs:
           tar -xzf filebrowser.tar.gz
           sudo mv filebrowser /usr/local/bin
 
+      - name: Install noVNC + websockify
+        run: |
+          curl -fsSL "https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz" -o novnc.tar.gz
+          tar -xzf novnc.tar.gz
+          mv noVNC-1.5.0 "${HOME}/novnc"
+          python3 -m pip install --break-system-packages websockify 2>/dev/null || \
+            python3 -m pip install --user websockify 2>/dev/null || \
+            pip3 install --break-system-packages websockify
+
       - name: "Install bore & cloudflared"
         run: |
           ARCH=$(uname -m)
@@ -66,19 +75,35 @@ jobs:
           export TERM=xterm
           nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
           cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 -b /files > /tmp/filebrowser.log 2>&1 &
-          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-          export PORT=8082 KIND=macos LABEL="GitHub Machine - macOS" USER=runner "PASS=${PASS}" VNC=0 TERM_STRIP=1 TTYD_PORT=8080 FB_PORT=8081
-          nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
+          caffeinate -dimsu &
+          if nc -z localhost 5900 2>/dev/null; then
+            nohup $(python3 -c "import websockify,sys;print(sys.executable)") -m websockify 6080 localhost:5900 > /tmp/websockify.log 2>&1 &
+          else
+            echo "Screen Sharing is off; skipping websockify"
+          fi
+          cat > /tmp/console.env <<EOF
+          export PORT=8082
+          export KIND=macos
+          export LABEL="GitHub Machine - macOS"
+          export USER=runner
+          export PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
+          export VNC=1
+          export TERM_STRIP=1
+          export TTYD_PORT=8080
+          export FB_PORT=8081
+          export VNCWS_PORT=6080
+          export NOVNC="${HOME}/novnc"
+          EOF
+          bash /tmp/console.env
+          source /tmp/console.env && nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
           sleep 3
           curl -fsS http://127.0.0.1:8082/healthz || { echo "console failed to start"; cat /tmp/console.log; exit 1; }
 
       - name: Start tunnels
         run: |
-          # gotty (8090 bore) keeps the raw VNC/Screen Sharing reachable; everything else
-          # (Terminal + Files) lives under one HTTPS origin via the console.
+          # Terminal + Files + Desktop all live under one HTTPS origin via the console.
           cloudflared tunnel --url http://127.0.0.1:8082 --no-autoupdate > /tmp/cf.log 2>&1 &
           bore local 8082 --local-host 127.0.0.1 --to bore.pub > /tmp/t8082.log 2>&1 &
-          bore local 5900 --local-host 127.0.0.1 --to bore.pub > /tmp/t5900.log 2>&1 &
           sleep 5
 
           C=""
@@ -88,7 +113,6 @@ jobs:
             sleep 5
           done
           B=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t8082.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
-          V=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t5900.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
           BASE="${C:-http://${B}}"
           PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
 
@@ -101,8 +125,9 @@ jobs:
           echo "MAROHUB_CONSOLE=${BASE}" && echo "::notice title=Machine console::${BASE}"
           echo "::notice title=Web terminal::${BASE}/term/"
           echo "::notice title=File manager::${BASE}/files  (user runner / password ${PASS})"
-          if [ -n "$V" ] && nc -z localhost 5900 2>/dev/null; then
-            echo "MAROHUB_DESKTOP=http://${V}" && echo "::notice title=Desktop (VNC)::${V}  (user runner / password ${PASS})"
+          if nc -z localhost 5900 2>/dev/null; then
+            V="${BASE}/vnc/vnc.html?path=/vnc-websockify&autoconnect=1&reconnect=1&resize=scale"
+            echo "MAROHUB_DESKTOP=${V}" && echo "::notice title=Desktop (embedded VNC)::${V}"
           else
             V=""
           fi
@@ -110,8 +135,8 @@ jobs:
           {
             echo "## macOS machine"
             echo ""
-            echo "* **Console** (one URL — Terminal / Files): ${BASE}"
-            if [ -n "$V" ]; then echo "* **Desktop** (VNC client): ${V}  — user \`runner\`, password \`${PASS}\`"; fi
+            echo "* **Console** (one URL — Desktop / Terminal / Files): ${BASE}"
+            if [ -n "$V" ]; then echo "* **Desktop** (embedded VNC): ${V}"; fi
             if [ -z "$V" ]; then echo "* **Desktop**: not available — Screen Sharing is off on this image"; fi
             echo ""
             echo "> The machine lives until this run ends or ~6h, whichever comes first."
@@ -125,7 +150,7 @@ jobs:
           BODY="${BODY}\"MAROHUB_CONSOLE\":\"${BASE}\""
           BODY="${BODY},\"MAROHUB_TERMINAL\":\"${BASE}/term/\""
           BODY="${BODY},\"MAROHUB_FILES\":\"${BASE}/files\""
-          [ -n "$V" ] && BODY="${BODY},\"MAROHUB_DESKTOP\":\"http://${V}\""
+          [ -n "$V" ] && BODY="${BODY},\"MAROHUB_DESKTOP\":\"${V}\""
           BODY="${BODY}}}"
           printf '%s' "$BODY" > .machine-state/macos.json
           git config user.name "github-machine" >/dev/null 2>&1 || true

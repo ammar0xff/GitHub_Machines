@@ -67,7 +67,7 @@
     <span class="chip">{{USER}} / {{PASS}}</span>
     <button id="copy-creds" title="Copy credentials">copy</button>
   </header>
-  <p id="rdp">Remote Desktop (RDP): <code>{{RDP}}</code>&nbsp;<button data-copy="{{RDP}}">copy</button></p>
+  <p id="rdp">Remote Desktop (RDP): <code>{{RDPADDR}}</code>&nbsp;<button data-copy="{{RDPADDR}}">copy</button></p>
   <nav>
     <button data-tab="desktop" aria-selected="true">Desktop</button>
     <button data-tab="term" aria-selected="false">Terminal</button>
@@ -76,17 +76,23 @@
   <main><iframe id="view" title="Machine view"></iframe></main>
   <script>
     const vnc = {{VNC}} === "1";
+    const rdp = {{RDP}} === "1";
     const tabs = {
-      desktop: vnc ? "/vnc/vnc.html?path=/vnc-websockify&autoconnect=1&reconnect=1&resize=scale" : null,
+      desktop: vnc
+        ? "/vnc/vnc.html?path=/vnc-websockify&autoconnect=1&reconnect=1&resize=scale"
+        : rdp
+          ? "/rdp/index.html?user={{RDP_USER}}&pass=" + encodeURIComponent("{{PASS}}")
+          : null,
       term: "/term/",
       files: "/files",
     };
-    const rdp = document.getElementById("rdp");
+    const rdpBar = document.getElementById("rdp");
     const nav = document.querySelector("nav");
     const view = document.getElementById("view");
-    if (!vnc) {
-      const jump = document.querySelector("#rdp");
-      jump.style.display = "block";
+    if (rdp && rdpBar) {
+      rdpBar.style.display = "block";
+    }
+    if (!tabs.desktop) {
       nav.querySelector('[data-tab="desktop"]').style.display = "none";
       nav.querySelector('[data-tab="term"]').click();
     }
@@ -115,7 +121,7 @@
       nav.querySelectorAll("button[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
       view.src = tabs[btn.dataset.tab];
     });
-    if (vnc) view.src = tabs.desktop;
+    if (tabs.desktop) view.src = tabs.desktop;
   </script>
 </body>
 </html>

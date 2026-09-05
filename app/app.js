@@ -12,14 +12,14 @@ const PORTALS = [
   { key: "MAROHUB_TERMINAL", label: "Terminal" },
   { key: "MAROHUB_FILES", label: "Files" },
   { key: "MAROHUB_DESKTOP", label: "Desktop" },
-  { key: "MAROHUB_RDP", label: "Desktop" },
+  { key: "MAROHUB_RDP", label: "RDP" },
 ];
 const PORTAL_LABELS = {
   MAROHUB_CONSOLE: "Console",
   MAROHUB_TERMINAL: "Terminal",
   MAROHUB_FILES: "Files",
   MAROHUB_DESKTOP: "Desktop",
-  MAROHUB_RDP: "Desktop",
+  MAROHUB_RDP: "RDP",
 };
 const MACHINE_CREDS = {
   ubuntu: [{ label: "Files · Desktop", user: "runner" }],

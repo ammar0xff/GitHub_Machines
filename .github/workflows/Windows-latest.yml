@@ -67,6 +67,9 @@ jobs:
           $env:USER = "runner | runneradmin"
           $env:PASS = $PASS
           $env:VNC = "0"
+          $env:RDP = "1"
+          $env:RDP_USER = "runneradmin"
+          $env:RDP_ADDR = $r
           $env:TERM_STRIP = "0"
           $env:TTYD_PORT = "8080"
           $env:FB_PORT = "8081"
@@ -108,11 +111,16 @@ jobs:
           Write-Output "MAROHUB_CONSOLE=$BASE"; Write-Output "::notice title=Machine console::$BASE"
           Write-Output "::notice title=Web terminal::$BASE/term/"
           Write-Output "::notice title=File manager::$BASE/files  (user runner / password $PASS)"
-          if ($r) { Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop::$r  (user runneradmin / password $PASS)" }
+          if ($r) {
+            $RDP_URL = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS"
+            Write-Output "MAROHUB_DESKTOP=$RDP_URL"; Write-Output "::notice title=Desktop (embedded RDP)::$RDP_URL"
+            Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop (native)::$r  (user runneradmin / password $PASS)"
+          }
 
           $summary = "## Windows machine`n`n"
-          $summary += "* **Console** (one URL - Terminal / Files): $BASE`n"
-          if ($r) { $summary += "* **Desktop** (RDP client): $r - user ``runneradmin``, password ``$PASS`` `n" }
+          $summary += "* **Console** (one URL - Desktop / Terminal / Files): $BASE`n"
+          if ($r) { $summary += "* **Desktop** (embedded RDP): $BASE/rdp/index.html - user ``runneradmin``, password ``$PASS`` `n" }
+          $summary += "* **Desktop** (native RDP client): $r - user ``runneradmin``, password ``$PASS`` `n"
           $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
@@ -124,7 +132,10 @@ jobs:
             $ep["MAROHUB_CONSOLE"] = $BASE
             $ep["MAROHUB_TERMINAL"] = "$BASE/term/"
             $ep["MAROHUB_FILES"] = "$BASE/files"
-            if ($r) { $ep["MAROHUB_RDP"] = $r }
+            if ($r) {
+              $ep["MAROHUB_DESKTOP"] = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS"
+              $ep["MAROHUB_RDP"] = $r
+            }
             $state = @{ run_id = $env:GITHUB_RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
             New-Item -ItemType Directory -Force -Path .machine-state | Out-Null
             Set-Content -Path .machine-state/windows.json -Value $state -NoNewline -Encoding utf8

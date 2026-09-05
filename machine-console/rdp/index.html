@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Desktop</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+      html, body { background: #111; }
+      body { margin: 0; }
+      #header { padding: 6px 10px; flex-wrap: wrap; }
+      #header h1 { display: none; }
+      #header input { padding: 4px 6px; }
+      #canvas-container { height: calc(100vh - 44px); }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>IronRDP</h1>
+        <input type="text" id="host" placeholder="Host" value="192.168.2.31:3389">
+        <input type="text" id="username" placeholder="Username" value="zxd">
+        <input type="password" id="password" placeholder="Password" value="zxd">
+        <button id="connect-btn">Connect</button>
+        <button id="disconnect-btn" disabled>Disconnect</button>
+        <button id="fullscreen-btn" title="Toggle fullscreen">⛶</button>
+        <span id="status" class="status-disconnected">Disconnected</span>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="rdp-screen" width="1280" height="720" tabindex="0"></canvas>
+    </div>
+
+    <div id="file-transfer-panel">
+        <div class="ft-header">
+            <h3>📁 File Transfer</h3>
+            <div class="ft-actions">
+                <button class="ft-btn" id="upload-btn" disabled>Upload Files</button>
+                <button class="ft-btn primary" id="download-btn" disabled>Request Download</button>
+                <input type="file" id="file-input" multiple style="display: none;">
+            </div>
+        </div>
+        <div class="ft-drop-zone" id="drop-zone">
+            Drag & drop files here to upload to remote desktop
+        </div>
+        <div id="file-list"></div>
+    </div>
+
+    <div id="log-panel"></div>
+
+    <script type="module">
+        import init, {
+            setup,
+            SessionBuilder,
+            DesktopSize,
+            InputTransaction,
+            DeviceEvent,
+            Extension,
+            ClipboardData,
+        } from './pkg/rdp_client.js';
+
+        import { createLogger } from './lib/logger.js';
+        import { createSessionManager } from './lib/session.js';
+
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log-panel');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const hostInput = document.getElementById('host');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const canvas = document.getElementById('rdp-screen');
+        const canvasContainer = document.getElementById('canvas-container');
+        const fileTransferPanel = document.getElementById('file-transfer-panel');
+        const uploadBtn = document.getElementById('upload-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const fileInput = document.getElementById('file-input');
+        const dropZone = document.getElementById('drop-zone');
+        const fileListEl = document.getElementById('file-list');
+
+        const { log, setStatus, formatError } = createLogger(logEl, statusEl);
+
+        const q = new URLSearchParams(location.search);
+        hostInput.value = q.get('host') || '127.0.0.1:3389';
+        usernameInput.value = q.get('user') || 'runneradmin';
+        passwordInput.value = q.get('pass') || '';
+
+        const sessionManager = createSessionManager({
+            canvas, statusEl, connectBtn, disconnectBtn, fileTransferPanel,
+            uploadBtn, downloadBtn, fileInput, dropZone, fileListEl,
+            hostInput, usernameInput, passwordInput,
+            SessionBuilder, DesktopSize, Extension, DeviceEvent, InputTransaction, ClipboardData,
+            init, setup, log, setStatus, formatError
+        });
+
+        connectBtn.addEventListener('click', sessionManager.connect);
+        disconnectBtn.addEventListener('click', sessionManager.disconnect);
+
+        [hostInput, usernameInput, passwordInput].forEach(el => {
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !connectBtn.disabled) sessionManager.connect();
+            });
+        });
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                canvasContainer.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        });
+
+        log('IronRDP Web Client ready.');
+        if (passwordInput.value) setTimeout(sessionManager.connect, 50);
+    </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "machine-launcher-v7";
+const CACHE_NAME = "machine-launcher-v8";
 const CORE = ["./", "./index.html", "./styles.css", "./app.js", "./main.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
