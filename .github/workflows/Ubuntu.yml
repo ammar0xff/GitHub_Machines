@@ -110,6 +110,7 @@ jobs:
           git config user.name "github-machine" >/dev/null 2>&1 || true
           git config user.email "github-machine@users.noreply.github.com" >/dev/null 2>&1 || true
           git checkout --orphan machine-state/ubuntu >/dev/null 2>&1 || true
+          git rm -rf --cached . >/dev/null 2>&1 || true
           git add .machine-state/ubuntu.json >/dev/null 2>&1 || true
           git commit -m "machine state: ${GITHUB_RUN_ID}" >/dev/null 2>&1 || true
           git push -f origin machine-state/ubuntu >/dev/null 2>&1 || echo "state publish skipped"
