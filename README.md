@@ -1,6 +1,5 @@
 # GitHub Machines
 
-
 <p>
   <img src="https://img.shields.io/github/contributors/ammar0xff/GitHub_Machines.svg?style=for-the-badge&color=red" />
   <img src="https://img.shields.io/github/forks/ammar0xff/GitHub_Machines.svg?style=for-the-badge&color=red" />
@@ -9,27 +8,24 @@
   <img src="https://img.shields.io/github/license/ammar0xff/GitHub_Machines?style=for-the-badge&color=red">
 </p>
 
-**GitHub_Machiens** is an automation solution that allows users to access Windows, Ubuntu, and macOS machines through
-GitHub Actions by forking this repository and configuring access using ngrok.
-
+**GitHub Machines** is an automation solution that spins up a temporary Windows, Ubuntu, or macOS machine on a GitHub
+Actions runner and exposes it through a public tunnel — no account or token required.
 
 ## Table of Contents
 
-<!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
   <ol>
-    <li><a href="#features">Features</a>
-    <li><a href="#built-With">Built With</a>
-    <li><a href="#installation">Installation</a>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#installation">Installation</a></li>
     <li><a href="#usage">Usage</a>
       <ul>
         <li><a href="#triggering-the-workflows">Triggering the Workflows</a></li>
-        <li><a href="#accessing-machines">Accessing Machines</a>
+        <li><a href="#accessing-the-machines">Accessing the Machines</a>
           <ul>
-            <li><a href="#windows">Window</a></li>
+            <li><a href="#windows">Windows</a></li>
             <li><a href="#ubuntu">Ubuntu</a></li>
-            <li><a href="#macos">Macos</a></li>
+            <li><a href="#macos">macOS</a></li>
           </ul>
         </li>
       </ul>
@@ -42,96 +38,95 @@ GitHub Actions by forking this repository and configuring access using ngrok.
   </ol>
 </details>
 
-
-
 ## Features
+
 - **Cross-Platform Support**: Gain access to Windows, Ubuntu, and macOS virtual machines using GitHub Actions.
-- **Easy Setup**: Fork the repository and configure access using GitHub Actions workflows.
-- **Secure Access**: Use ngrok for secure tunneling into the machines.
-- **Customizable Workflows**: Modify GitHub Actions workflows to suit your project requirements.
-- **Automated Testing**: Utilize GitHub Actions to test software across multiple platforms.
-
-
-
+- **Easy Setup**: Fork the repository and run the workflow — no cloud account, token, or payment method needed.
+- **Secure Access**: [bore](https://github.com/ekzhang/bore) creates an encrypted tunnel into the machine.
+- **Customizable Workflows**: Modify the GitHub Actions workflows to suit your requirements.
+- **Spins Down Automatically**: The machine stops when the run ends, so nothing lingers.
 
 ### Built With
 
 <p>
-<img src="https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white" />
-<img src="https://img.shields.io/badge/GNU%20Bash-4EAA25?style=for-the-badge&logo=GNU%20Bash&logoColor=white" />
-<img src="https://img.shields.io/badge/Windows%20Terminal-%234D4D4D.svg?style=for-the-badge&logo=windows-terminal&logoColor=white"/>
+  <img src="https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white" />
+  <img src="https://img.shields.io/badge/GNU%20Bash-4EAA25?style=for-the-badge&logo=GNU%20Bash&logoColor=white" />
+  <img src="https://img.shields.io/badge/bore-10B981?style=for-the-badge&logo=rust&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Gotty-4D4D4D?style=for-the-badge&logo=gnu-bash&logoColor=white"/>
 </p>
-
-
 
 ## Installation
 
-To use this project, follow these steps:
+1. **Fork the Repository**: click the **Fork** button at the top right of this repository.
 
-1. **Fork the Repository**:
-Click the **Fork** button at the top right of this repository.
+2. **Optional GitHub Secrets**: tunneling now uses [bore](https://github.com/ekzhang/bore) and its public relay
+   (`bore.pub`), so **no secrets are required**. Set secrets in **Settings > Secrets and variables > Actions** only if
+   you run your own relay or switch back to ngrok:
 
-2. **Set up GitHub Secrets**:
-You need to configure the necessary GitHub Secrets to establish a secure connection to the machines using ngrok.
-
-1. Go to your forked repository.
-2. Navigate to **Settings > Secrets and variables > Actions**.
-3. Add the following secrets:
-- `NGROK_TOKEN`: Your ngrok authentication token. [Get ngrok token here](https://ngrok.com).
-- `NGROK_DOMAIN`: A custom domain (optional) or ngrok subdomain to use for secure access.
-
-Example:
-
-| Secret Name | Description |
-|----------------|-------------------------------------|
-| `NGROK_TOKEN`  | Your ngrok authentication token |
-| `NGROK_DOMAIN` | Your ngrok subdomain            |
-
-> Note: if your Ngrok account dosen't linked to a payment method, windows WILL NOT work.
+   | Secret        | Description                     |
+   |---------------|---------------------------------|
+   | `NGROK_TOKEN` | ngrok authentication token      |
+   | `NGROK_DOMAIN`| ngrok reserved subdomain        |
 
 ## Usage
 
-Once you've forked the repository and set up the GitHub Secrets, you can use the provided workflows to access Windows,
-Ubuntu, and macOS machines.
+Once you've forked the repository, start a machine from the **Actions** tab. GitHub Actions is free for public
+repositories and includes a monthly quota on private ones.
 
 ### Triggering the Workflows
 
-1. Go to the **Actions** tab in your forked repository.
-2. Select the desired workflow (Windows, Ubuntu, or macOS).
-3. Click **Run workflow** to trigger access to the machine.
+1. Go to the **Actions** tab in your repository.
+2. Select the desired workflow (**Ubuntu**, **macOS**, or **Windows**).
+3. Click **Run workflow**.
+4. Wait for the job to boot, then open the machine as described below.
 
-### Accessing Machines
+> Each machine lives until the run finishes or the `bore.pub` relay closes the tunnel (~6 hours maximum). You can stop
+> it early by canceling the run.
 
-#### **windows**
-- use any RDP client and Navigate to [Ngrok Endpoints](https://dashboard.ngrok.com/cloud-edge/endpoints)
-- copy the endpoint of your machine and past it into the rdp client with the user "**runner**" & password
-"**P@ssw0rd!**"
-- Done.
-#### **Ubuntu**
-- Navigate to your Ngrok Domain and that's all
-#### **Macos**
-- SOON..
+### Accessing the Machines
 
+#### Windows
+
+1. Read the **Create Tunnel** step output in the workflow run — bore prints the public endpoint as `bore.pub:PORT`.
+2. Open an RDP client and connect to that address as `bore.pub:PORT`.
+3. Sign in with user **`runneradmin`** and password **`P@ssw0rd!`**.
+
+#### Ubuntu
+
+1. Read the run annotations or the **Start tunnel** step in the workflow run. The endpoint is printed as
+   `http://bore.pub:PORT`.
+2. Open that URL in any browser — you get a terminal in the page (via Gotty), logged in as `runner`.
+
+#### macOS
+
+1. Same as Ubuntu: open the `http://bore.pub:PORT` URL printed in the **Start tunnel** step.
+2. A macOS terminal (Gotty) opens in the browser, logged in as `runner`.
+
+> Note: GitHub's macOS runner images require a paid plan for private repositories; public repositories can use them for
+> free within the Actions quota.
 
 ## Customizing
 
-### Clone the Repository:
-If you want to modify the workflows locally, clone the forked repository to your local machine using:
+Clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/yourusername/GitHub_Machiens.git
-cd GitHub_Machiens
+git clone https://github.com/yourusername/GitHub_Machines.git
+cd GitHub_Machines
 ```
 
-<!-- CONTRIBUTING -->
+- **Swap the terminal**: replace Gotty with any server you like (OpenSSH, code-server, VNC, ...) and forward the port
+  with the same `bore local <port> --to bore.pub` command.
+- **Use a fixed address**: run your own relay (`bore server`) and pass `--to yourhost:port`, or switch to ngrok with the
+  `NGROK_TOKEN`/`NGROK_DOMAIN` secrets above.
+- **Change the access credentials**: update the password in `Windows-latest.yml` (or run Gotty with `--credential`).
+
 ## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any
 contributions you make are **greatly appreciated**.
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also
-simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+simply open an issue with the tag "enhancement". Don't forget to give the project a star! Thanks again!
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -139,35 +134,23 @@ Don't forget to give the project a star! Thanks again!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-
 ### Top contributors:
 
 <a href="https://github.com/ammar0xff/GitHub_Machines/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=ammar0xff/GitHub_Machines" alt="contrib.rocks image" />
 </a>
 
-
-
-<!-- LICENSE -->
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
-
-
-
-<!-- CONTACT -->
 ## Contact
 
-Ammar Mohamed - ammar0xf@gmail.com
+Ammar Mohamed - [ammar0xff](https://github.com/ammar0xff)
 
 Project Link: [https://github.com/ammar0xff/GitHub_Machines](https://github.com/ammar0xff/GitHub_Machines)
 
-
-
-
-<!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-* [Gotty](https://github.com/yudai/gotty)
-* [Ngrok](https://ngrok.com/)
+- [Gotty](https://github.com/yudai/gotty) — terminal in the browser
+- [Bore](https://github.com/ekzhang/bore) — dead-simple tunneling

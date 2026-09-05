@@ -1,12 +1,12 @@
-name: Ubuntu
+name: macOS
 on: workflow_dispatch
 concurrency:
-  group: ubuntu-machine
+  group: macos-machine
   cancel-in-progress: false
 
 jobs:
   machine:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 435
 
     steps:
@@ -14,20 +14,26 @@ jobs:
 
       - name: Install gotty
         run: |
-          curl -fsSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_linux_amd64.tar.gz" -o gotty.tar.gz
+          curl -fsSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_darwin_amd64.tar.gz" -o gotty.tar.gz
           tar -xzf gotty.tar.gz
           sudo mv gotty /usr/local/bin
 
       - name: Install bore
         run: |
-          curl -fsSL "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-unknown-linux-musl.tar.gz" -o bore.tar.gz
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then
+            ASSET="bore-v0.6.0-aarch64-apple-darwin.tar.gz"
+          else
+            ASSET="bore-v0.6.0-x86_64-apple-darwin.tar.gz"
+          fi
+          curl -fsSL "https://github.com/ekzhang/bore/releases/download/v0.6.0/${ASSET}" -o bore.tar.gz
           tar -xzf bore.tar.gz
           sudo mv bore /usr/local/bin
 
       - name: Start web terminal
         run: |
           export TERM=xterm
-          nohup gotty -w --title-format "GitHub Machine - Ubuntu" /bin/bash > /tmp/gotty.log 2>&1 &
+          nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
           sleep 3
 
       - name: Start tunnel (keeps the machine alive)
