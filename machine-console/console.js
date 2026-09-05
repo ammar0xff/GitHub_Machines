@@ -206,8 +206,14 @@ class WsShim extends EventEmitter {
     this.readyState = 1;
     this._buf = Buffer.alloc(0);
     let partial = new Map();
-    socket.on("data", (c) => {
-      this._buf = Buffer.concat([this._buf, c]);
+    socket.on("data", (c) => this._feed(c));
+    socket.on("error", () => this.emit("error"));
+    socket.on("end", () => {
+      if (this.readyState === 1) this.readyState = 3;
+      this.emit("close");
+    });
+    this._feed = (chunk) => {
+      this._buf = Buffer.concat([this._buf, chunk]);
       const r = parseFrames(this._buf);
       this._buf = r.rest;
       for (const m of r.msgs) {
@@ -235,12 +241,7 @@ class WsShim extends EventEmitter {
           }
         }
       }
-    });
-    socket.on("error", () => this.emit("error"));
-    socket.on("end", () => {
-      if (this.readyState === 1) this.readyState = 3;
-      this.emit("close");
-    });
+    };
   }
   send(data) {
     if (this.readyState !== 1) return;
@@ -274,7 +275,9 @@ function handleRdpUpgrade(req, socket, head) {
   } catch (e) {
     shim.close();
   }
-  if (head && head.length) shim._feed(Buffer.from(head));
+  if (head && head.length) {
+    try { shim._feed(Buffer.from(head)); } catch (_) {}
+  }
 }
 
 function serveRdpStatic(res, rel) {
