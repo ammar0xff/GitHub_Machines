@@ -68,40 +68,41 @@ jobs:
           if (-not $srv) { Write-Error "lcxl-remote-desk-server.exe not found in bundle"; exit 1 }
           $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
           $cfg = "$env:GITHUB_WORKSPACE\lcxl\config.toml"
-          @"
-[system]
-port = 8091
-listen_addr_ipv4 = "0.0.0.0"
-enable_ipv6 = false
-
-[log]
-log_level = "info"
-
-[user]
-login_user_name = "runneradmin"
-login_password = "$PASS"
-
-[desk]
-video_fps = 30
-video_quality = 28
-show_mouse = true
-enable_dirty_rect = true
-
-[security]
-allow_remote_control = true
-allow_clipboard_sync = true
-allow_system_audio_capture = false
-allow_private_screen = false
-allow_whiteboard = false
-allow_terminal = true
-allow_file_browse = true
-allow_file_delete = false
-allow_file_transfer = false
-approval_timeout = 0
-
-[turn]
-enable_turn = true
-"@ | Set-Content -Path $cfg -Encoding utf8
+          $lines = @(
+            '[system]',
+            'port = 8091',
+            'listen_addr_ipv4 = "0.0.0.0"',
+            'enable_ipv6 = false',
+            '',
+            '[log]',
+            'log_level = "info"',
+            '',
+            '[user]',
+            'login_user_name = "runneradmin"',
+            "login_password = ""$PASS""",
+            '',
+            '[desk]',
+            'video_fps = 30',
+            'video_quality = 28',
+            'show_mouse = true',
+            'enable_dirty_rect = true',
+            '',
+            '[security]',
+            'allow_remote_control = true',
+            'allow_clipboard_sync = true',
+            'allow_system_audio_capture = false',
+            'allow_private_screen = false',
+            'allow_whiteboard = false',
+            'allow_terminal = true',
+            'allow_file_browse = true',
+            'allow_file_delete = false',
+            'allow_file_transfer = false',
+            'approval_timeout = 0',
+            '',
+            '[turn]',
+            'enable_turn = true'
+          )
+          Set-Content -Path $cfg -Value ($lines -join [Environment]::NewLine) -Encoding utf8
           Get-Content $cfg
 
       - name: Download cloudflared
