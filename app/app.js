@@ -306,12 +306,28 @@ async function poller(kind) {
     }
 
 if (r.status === "in_progress") {
-        if (s.status !== "running" && !Object.keys(s.endpoints).length) {
+        const hadEp = Object.keys(s.endpoints).length > 0;
+        if (s.status !== "running" && !hadEp) {
           s.status = "running";
           persistSessions();
           renderAll();
         }
-        if (!Object.keys(s.endpoints).length && i >= sinceLog) {
+        if (hadEp && i % 6 === 5) {
+          // Re-verify this session still owns the live state slot for its kind.
+          let state;
+          try {
+            state = await a.stateJson(kind);
+          } catch (_) {}
+          if (state && String(state.run_id) !== String(s.runId)) {
+            s.status = "ended";
+            s.endpoints = {};
+            s.error = "This run ended; a newer launch (#" + state.run_id + ") is live. Close or refresh to see it.";
+            persistSessions();
+            renderAll();
+            return;
+          }
+        }
+        if (!hadEp && i >= sinceLog) {
           // Workflows publish endpoints to a state branch; fall back to run logs.
           sinceLog = i + (config.token ? 2 : 2); // every ~12s
           let found = {};
@@ -360,6 +376,61 @@ if (r.status === "in_progress") {
       renderAll();
     }
   }
+}
+
+// A machine's card must stop advertising links the moment that run is no longer
+// the live state holder for its kind. Checks run status and republishes state
+// quickly, so stale portals disappear even when the app tab was backgrounded
+// (mobile browsers throttle the 6s polling loop while hidden).
+async function wakeCheck(kind) {
+  const s = sessions[kind];
+  if (!s || !isActive(s)) return;
+  let r;
+  try {
+    const runs = await api().runs();
+    r = runs.find((x) => String(x.id) === String(s.runId));
+  } catch (_) {
+    return;
+  }
+  if (!r) return;
+  if (r.status === "completed") {
+    s.status = "ended";
+    s.endpoints = {};
+    s.error = "Machine ended: " + (r.conclusion || "stopped") + ".";
+    persistSessions();
+    renderAll();
+    return;
+  }
+  if (Object.keys(s.endpoints).length) {
+    let state;
+    try {
+      state = await api().stateJson(kind);
+    } catch (_) {
+      return;
+    }
+    if (state && String(state.run_id) !== String(s.runId)) {
+      s.status = "ended";
+      s.endpoints = {};
+      s.error = "This run ended; a newer launch (#" + state.run_id + ") is live. Close or refresh to see it.";
+      persistSessions();
+      renderAll();
+    }
+  }
+}
+
+function wakeAll() {
+  for (const kind of ["ubuntu", "windows", "macos"]) {
+    try {
+      wakeCheck(kind);
+    } catch (_) {}
+  }
+}
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("focus", wakeAll);
+  window.addEventListener("pageshow", wakeAll);
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wakeAll();
+  });
 }
 
 function parseEndpoints(logText) {
