@@ -225,8 +225,31 @@ pre {
   opacity: 0.65;
 }
 .portal-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   font-weight: 600;
   font-size: 14px;
+}
+.portal-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+}
+.portal-tag.vnc {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.portal-tag.rdp {
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 16%, transparent);
 }
 .portal-url {
   font-size: 12px;

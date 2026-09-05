@@ -30,6 +30,13 @@ const MACHINE_CREDS = {
   macos: [{ label: "Files · Desktop", user: "runner" }],
 };
 
+// Desktop transport each machine uses for its embedded Desktop portal: "vnc" or "rdp".
+const DESKTOP_TRANSPORT = {
+  ubuntu: "vnc",
+  windows: "rdp",
+  macos: "vnc",
+};
+
 const LIFETIME_MS = 6 * 60 * 60 * 1000; // ~6h bore relay window
 const LS_CONFIG = "machine-launcher-config";
 const LS_SESSIONS = "machine-launcher-sessions";
@@ -528,19 +535,24 @@ function fallbackCopy(text) {
 function portalButtons(kind, s) {
   const seen = {};
   const items = [];
+  const transport = DESKTOP_TRANSPORT[kind];
   for (const p of PORTALS) {
     const url = s.endpoints[p.key];
     if (!url) continue;
     const label = PORTAL_LABELS[p.key];
     if (seen[label]) continue;
     seen[label] = true;
-    items.push({ label, url, isConsole: p.key === "MAROHUB_CONSOLE" });
+    items.push({ label, url, isConsole: p.key === "MAROHUB_CONSOLE", isDesktop: p.key === "MAROHUB_DESKTOP" });
   }
   items.sort((a, b) => (b.isConsole ? 1 : 0) - (a.isConsole ? 1 : 0));
-  return items.map(({ label, url, isConsole }) => {
+  return items.map(({ label, url, isConsole, isDesktop }) => {
     const isHttp = /^https?:\/\//.test(url || "");
     const tile = el("div", { className: "portal" + (isConsole ? " console" : "") });
-    tile.appendChild(el("span", { className: "portal-label" }, label));
+    const labelWrap = el("span", { className: "portal-label" }, label);
+    if (isDesktop && transport) {
+      labelWrap.appendChild(el("span", { className: "portal-tag " + transport }, transport));
+    }
+    tile.appendChild(labelWrap);
     tile.appendChild(el("code", { className: "portal-url" }, url.replace(/^https?:\/\//, "")));
     if (isHttp) {
       tile.appendChild(el("a", {
