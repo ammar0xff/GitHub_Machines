@@ -383,7 +383,7 @@ function performRDPHandshake(host, port, x224Request) {
                 return;
             }
 
-            const tlsSocket = tls.connect({ socket: tcpSocket, servername: host, rejectUnauthorized: false }, () => {
+            const tlsSocket = tls.connect({ socket: tcpSocket, servername: net.isIP(host) ? undefined : host, rejectUnauthorized: false }, () => {
                 console.log(`${logPrefix} ✓ TLS upgrade completed (${tlsSocket.getProtocol()})`);
                 try {
                     const peerCert = tlsSocket.getPeerCertificate(true);
@@ -431,6 +431,31 @@ function extractCertChain(peerCert) {
 // ────────────────────────────────────────────────────
 // Bidirectional Relay: WebSocket ↔ TLS
 // ────────────────────────────────────────────────────
+
+/**
+ * Rewrite the RDP Negotiation Request inside an X.224 Connection Request so the
+ * client asks for SSL (protocol 1) only. Windows 2022 runners otherwise select
+ * RDSTLS (protocol 8) when the client offers it, which IronRDP's RDCleanPath
+ * WebSocket client does not handle in this proxy-relay path: it tears the
+ * connection down as soon as the negotiation confirms RDSTLS.
+ *
+ * Scans the trailing RDP Negotiation Request structure (type 0x01, length 8) and
+ * replaces requestedProtocols with PROTOCOL_SSL. Non-matching CRs pass through.
+ *
+ * @param {Buffer} cr - X.224 Connection Request bytes
+ * @returns {Buffer} possibly-rewritten Connection Request
+ */
+function forceSslNegotiation(cr) {
+    if (cr.length < 8) return cr;
+    const tail = cr.length - 8;
+    // RDP Negotiation Request: type(1)=0x01, flags(1), length(2)=8, requestedProtocols(4)
+    if (cr[tail] !== 0x01 || cr.readUInt16BE(tail + 2) !== 8) return cr;
+    const copy = Buffer.from(cr);
+    const requested = cr.readUInt32LE(tail + 4);
+    copy.writeUInt32LE(0x00000001, tail + 4); // PROTOCOL_SSL
+    console.log(`Force SSL negotiation: requestedProtocols=0x${(requested >>> 0).toString(16)} → 0x1`);
+    return copy;
+}
 
 /**
  * Set up bidirectional relay between a WebSocket and a TLS socket.
@@ -528,10 +553,11 @@ function handleConnection(ws) {
             console.log(`Connecting to RDP server at ${host}:${port}`);
 
             // Step 3-5: TCP + X.224 + TLS + Certs
+            const cr = forceSslNegotiation(request.x224ConnectionRequest);
             const { x224Response, certChain, tlsSocket } = await performRDPHandshake(
                 host,
                 port,
-                request.x224ConnectionRequest
+                cr
             );
 
             // Step 6: Build and send RDCleanPath response
@@ -570,5 +596,6 @@ module.exports = {
     buildRDCleanPathError,
     parseDestination,
     performRDPHandshake,
+    forceSslNegotiation,
     setupRelay,
 };
