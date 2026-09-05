@@ -56,9 +56,9 @@ jobs:
           $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
           Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
 
-          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
-          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8081","--host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8081.out -RedirectStandardError bore8081.err
-          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8081","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8081.out -RedirectStandardError bore8081.err
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
 
           function Get-BoreHost([string]$file) {
             $raw = Get-Content $file -Raw -ErrorAction SilentlyContinue
