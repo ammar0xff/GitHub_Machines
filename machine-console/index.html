@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{LABEL}} · Console</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #14161a;
+    --surface: #1d2026;
+    --line: #2c313a;
+    --text: #e8e6e3;
+    --muted: #9aa1ab;
+    --accent: #f0a944;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  header .brand { font-weight: 700; letter-spacing: 0.02em; }
+  header .kind { font-family: ui-monospace, monospace; font-size: 12px; color: var(--accent); }
+  header .spacer { flex: 1; }
+  header .chip {
+    font-family: ui-monospace, monospace; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; color: var(--muted);
+  }
+  header button {
+    font: inherit; font-size: 13px; font-family: ui-monospace, monospace;
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 9px 12px; min-height: 38px; cursor: pointer;
+  }
+  header button:active { opacity: 0.7; }
+  #rdp button {
+    font: inherit; font-size: 12px; font-family: ui-monospace, monospace;
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 6px 10px; min-height: 32px; cursor: pointer;
+  }
+  header button:active { opacity: 0.7; }
+  #rdp {
+    display: none; margin: 0; padding: 8px 14px; background: #2a2118;
+    border-bottom: 1px solid var(--line); font-family: ui-monospace, monospace; font-size: 13px;
+  }
+  #rdp code { color: var(--accent); }
+  nav { display: flex; gap: 4px; padding: 8px 14px 0; background: var(--bg); }
+  nav button {
+    font: inherit; font-weight: 600; color: var(--muted);
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer;
+  }
+  nav button[aria-selected="true"] { color: var(--text); background: var(--surface); border-color: var(--line); }
+  main { flex: 1; min-height: 0; background: var(--surface); }
+  iframe { width: 100%; height: 100%; border: 0; background: #111; display: block; }
+  @media (max-width: 640px) {
+    header { gap: 6px; }
+    header .chip { display: none; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="brand">GitHub Machine</span>
+    <span class="kind">{{KIND}}</span>
+    <span class="spacer"></span>
+    <span class="chip">{{USER}} / {{PASS}}</span>
+    <button id="copy-creds" title="Copy credentials">copy</button>
+  </header>
+  <p id="rdp">Remote Desktop (RDP): <code>{{RDP}}</code>&nbsp;<button data-copy="{{RDP}}">copy</button></p>
+  <nav>
+    <button data-tab="desktop" aria-selected="true">Desktop</button>
+    <button data-tab="term" aria-selected="false">Terminal</button>
+    <button data-tab="files" aria-selected="false">Files</button>
+  </nav>
+  <main><iframe id="view" title="Machine view"></iframe></main>
+  <script>
+    const vnc = {{VNC}} === "1";
+    const tabs = {
+      desktop: vnc ? "/vnc/vnc.html?path=/vnc-websockify&autoconnect=1&reconnect=1&resize=scale" : null,
+      term: "/term/",
+      files: "/files",
+    };
+    const rdp = document.getElementById("rdp");
+    const nav = document.querySelector("nav");
+    const view = document.getElementById("view");
+    if (!vnc) {
+      const jump = document.querySelector("#rdp");
+      jump.style.display = "block";
+      nav.querySelector('[data-tab="desktop"]').style.display = "none";
+      nav.querySelector('[data-tab="term"]').click();
+    }
+    document.querySelectorAll("#rdp button, [data-copy]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const text = b.getAttribute("data-copy") || rdp.querySelector("code").textContent.trim();
+        (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+          .then(() => { b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1200); })
+          .catch(() => {
+            const ta = document.createElement("textarea");
+            ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand("copy"); b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1200); } catch (_) {}
+            ta.remove();
+          });
+      });
+    });
+    document.getElementById("copy-creds").addEventListener("click", async () => {
+      const text = "{{USER}} / {{PASS}}";
+      if (navigator.clipboard) { try { await navigator.clipboard.writeText(text); return; } catch (_) {} }
+      const ta = document.createElement("textarea"); ta.value = text;
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+    });
+    nav.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-tab]");
+      if (!btn || !tabs[btn.dataset.tab]) return;
+      nav.querySelectorAll("button[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+      view.src = tabs[btn.dataset.tab];
+    });
+    if (vnc) view.src = tabs.desktop;
+  </script>
+</body>
+</html>

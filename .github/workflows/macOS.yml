@@ -29,17 +29,22 @@ jobs:
           tar -xzf filebrowser.tar.gz
           sudo mv filebrowser /usr/local/bin
 
-      - name: Install bore
+      - name: "Install bore & cloudflared"
         run: |
           ARCH=$(uname -m)
           if [ "$ARCH" = "arm64" ]; then
             ASSET="bore-v0.6.0-aarch64-apple-darwin.tar.gz"
+            CF_ASSET="cloudflared-darwin-arm64.tgz"
           else
             ASSET="bore-v0.6.0-x86_64-apple-darwin.tar.gz"
+            CF_ASSET="cloudflared-darwin-amd64.tgz"
           fi
           curl -fsSL "https://github.com/ekzhang/bore/releases/download/v0.6.0/${ASSET}" -o bore.tar.gz
           tar -xzf bore.tar.gz
           sudo mv bore /usr/local/bin
+          curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/${CF_ASSET}" -o cloudflared.tgz
+          tar -xzf cloudflared.tgz
+          sudo mv cloudflared /usr/local/bin
 
       - name: Configure filebrowser
         run: |
@@ -60,41 +65,55 @@ jobs:
         run: |
           export TERM=xterm
           nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
-          cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 > /tmp/filebrowser.log 2>&1 &
+          cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 -b /files > /tmp/filebrowser.log 2>&1 &
+          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
+          PORT=8082 KIND=macos LABEL="GitHub Machine - macOS" USER=runner "PASS=${PASS}" \
+            VNC=0 TERM_STRIP=1 TTYD_PORT=8080 FB_PORT=8081 \
+            nohup node "${GITHUB_WORKSPACE}/machine-console/console.js" > /tmp/console.log 2>&1 &
           sleep 3
+          curl -fsS http://127.0.0.1:8082/healthz || { echo "console failed to start"; cat /tmp/console.log; exit 1; }
 
       - name: Start tunnels
         run: |
-          bore local 8080 --local-host 127.0.0.1 --to bore.pub > /tmp/t8080.log 2>&1 &
-          bore local 8081 --local-host 127.0.0.1 --to bore.pub > /tmp/t8081.log 2>&1 &
+          # gotty (8090 bore) keeps the raw VNC/Screen Sharing reachable; everything else
+          # (Terminal + Files) lives under one HTTPS origin via the console.
+          cloudflared tunnel --url http://127.0.0.1:8082 --no-autoupdate > /tmp/cf.log 2>&1 &
+          bore local 8082 --local-host 127.0.0.1 --to bore.pub > /tmp/t8082.log 2>&1 &
           bore local 5900 --local-host 127.0.0.1 --to bore.pub > /tmp/t5900.log 2>&1 &
-          sleep 8
+          sleep 5
 
-          T=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t8080.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
-          F=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t8081.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
+          C=""
+          for i in $(seq 1 12); do
+            C=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -n1)
+            [ -n "$C" ] && break
+            sleep 5
+          done
+          B=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t8082.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
           V=$(grep -oE 'listening at [A-Za-z0-9.-]+:[0-9]{2,5}' /tmp/t5900.log | head -n1 | grep -oE '[A-Za-z0-9.-]+:[0-9]{2,5}')
+          BASE="${C:-http://${B}}"
           PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
 
-          [ -n "$T" ] && echo "MAROHUB_TERMINAL=http://${T}" && echo "::notice title=Web terminal::http://${T}"
-          [ -n "$F" ] && echo "MAROHUB_FILES=http://${F}" && echo "::notice title=File manager::http://${F}  (user runner / password ${PASS})"
+          if [ -z "$BASE" ]; then
+            echo "::error::no console tunnel available. Tunnel logs:"
+            cat /tmp/cf.log /tmp/t8082.log
+            exit 1
+          fi
+          echo "CONSOLE_URL=$BASE"
+          echo "MAROHUB_CONSOLE=${BASE}" && echo "::notice title=Machine console::${BASE}"
+          echo "::notice title=Web terminal::${BASE}/term/"
+          echo "::notice title=File manager::${BASE}/files  (user runner / password ${PASS})"
           if [ -n "$V" ] && nc -z localhost 5900 2>/dev/null; then
             echo "MAROHUB_DESKTOP=http://${V}" && echo "::notice title=Desktop (VNC)::${V}  (user runner / password ${PASS})"
           else
             V=""
           fi
 
-          if [ -z "$T" ] && [ -z "$F" ] && [ -z "$V" ]; then
-            echo "::error::bore did not report any endpoints. Tunnel logs:"
-            cat /tmp/t8080.log /tmp/t8081.log /tmp/t5900.log
-          fi
-
           {
             echo "## macOS machine"
             echo ""
-            [ -n "$T" ] && echo "* **Terminal** (any browser): http://${T}"
-            [ -n "$F" ] && echo "* **Files** (filebrowser): http://${F}  — user \`runner\`, password \`${PASS}\`"
-            [ -n "$V" ] && echo "* **Desktop** (VNC client): ${V}  — user \`runner\`, password \`${PASS}\`"
-            if [ -z "$V" ]; then echo "* **Desktop**: not available — Screen Sharing is off on this image (use Finder > Go > Connect to Server with \`vnc://…\` if enabled)"; fi
+            echo "* **Console** (one URL — Terminal / Files): ${BASE}"
+            if [ -n "$V" ]; then echo "* **Desktop** (VNC client): ${V}  — user \`runner\`, password \`${PASS}\`"; fi
+            if [ -z "$V" ]; then echo "* **Desktop**: not available — Screen Sharing is off on this image"; fi
             echo ""
             echo "> The machine lives until this run ends or ~6h, whichever comes first."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -104,8 +123,9 @@ jobs:
           # publish hiccup can never take the machine down.
           mkdir -p .machine-state
           BODY="{\"run_id\":\"${GITHUB_RUN_ID}\",\"endpoints\":{"
-          BODY="${BODY}\"MAROHUB_TERMINAL\":\"http://${T}\""
-          [ -n "$F" ] && BODY="${BODY},\"MAROHUB_FILES\":\"http://${F}\""
+          BODY="${BODY}\"MAROHUB_CONSOLE\":\"${BASE}\""
+          BODY="${BODY},\"MAROHUB_TERMINAL\":\"${BASE}/term/\""
+          BODY="${BODY},\"MAROHUB_FILES\":\"${BASE}/files\""
           [ -n "$V" ] && BODY="${BODY},\"MAROHUB_DESKTOP\":\"http://${V}\""
           BODY="${BODY}}}"
           printf '%s' "$BODY" > .machine-state/macos.json

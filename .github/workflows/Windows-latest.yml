@@ -47,17 +47,35 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" -Force)
 
+      - name: Download cloudflared
+        run: |
+          Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile cloudflared.exe
+
       - name: Start the machine (keeps the machine alive)
         run: |
           # Everything the machine needs lives in this one step: services, tunnels and the
           # blocking wait. Windows runners tear down a step's processes when it completes,
           # so a "keep alive" step in a later shell could find nothing still running.
-          Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","cmd.exe") -WindowStyle Hidden
+          $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
+          Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","-b","/term","cmd.exe") -WindowStyle Hidden
           $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
-          Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
+          Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081","-b","/files") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
 
-          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
-          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8081","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8081.out -RedirectStandardError bore8081.err
+          $env:PORT = "8082"
+          $env:KIND = "windows"
+          $env:LABEL = "GitHub Machine - Windows"
+          $env:USER = "runner | runneradmin"
+          $env:PASS = $PASS
+          $env:VNC = "0"
+          $env:TERM_STRIP = "0"
+          $env:TTYD_PORT = "8080"
+          $env:FB_PORT = "8081"
+          Start-Process -FilePath "node" -ArgumentList "$env:GITHUB_WORKSPACE\machine-console\console.js" -WindowStyle Hidden
+          Start-Sleep -Seconds 4
+          try { (Invoke-WebRequest "http://127.0.0.1:8082/healthz" -UseBasicParsing).Content | Out-Null } catch { Write-Error "console failed to start"; exit 1 }
+
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList @("tunnel","--url","http://127.0.0.1:8082","--no-autoupdate") -RedirectStandardOutput cloudflared.out -RedirectStandardError cloudflared.err -WindowStyle Hidden
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8082","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8082.out -RedirectStandardError bore8082.err
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
 
           function Get-BoreHost([string]$file) {
@@ -65,29 +83,35 @@ jobs:
             if ($raw -match "listening at (\S+)") { return $matches[1] }
             return $null
           }
+          function Get-CfHost {
+            $raw = (Get-Content cloudflared.out,cloudflared.err -Raw -ErrorAction SilentlyContinue)
+            if ($raw -match "https://([a-z0-9-]+\.trycloudflare\.com)") { return $matches[0] }
+            return $null
+          }
 
-          $t = $null; $f = $null; $r = $null
-          $deadline = (Get-Date).AddSeconds(60)
-          while (-not ($t -and $f -and $r) -and (Get-Date) -lt $deadline) {
+          $c = $null; $b = $null; $r = $null
+          $deadline = (Get-Date).AddSeconds(90)
+          while (-not ($c -and $b -and $r) -and (Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 4
-            if (-not $t) { $t = Get-BoreHost "bore8080.err"; if (-not $t) { $t = Get-BoreHost "bore8080.out" } }
-            if (-not $f) { $f = Get-BoreHost "bore8081.err"; if (-not $f) { $f = Get-BoreHost "bore8081.out" } }
+            if (-not $c) { $c = Get-CfHost }
+            if (-not $b) { $b = Get-BoreHost "bore8082.err"; if (-not $b) { $b = Get-BoreHost "bore8082.out" } }
             if (-not $r) { $r = Get-BoreHost "bore3389.err"; if (-not $r) { $r = Get-BoreHost "bore3389.out" } }
           }
 
-          $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-
-          if ($t) { Write-Output "MAROHUB_TERMINAL=http://$t"; Write-Output "::notice title=Web terminal::http://$t" }
-          if ($f) { Write-Output "MAROHUB_FILES=http://$f"; Write-Output "::notice title=File manager::http://$f  (user runner / password $PASS)" }
-          if ($r) { Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop::$r  (user runneradmin / password $PASS)" }
-          if (-not $t -and -not $f -and -not $r) {
-            Write-Output "::error::bore did not report any endpoints."
-            Get-Content bore8080.err,bore8081.err,bore3389.err,bore8080.out,bore8081.out,bore3389.out -ErrorAction SilentlyContinue
+          $BASE = if ($c) { $c } elseif ($b) { "http://$b" } else { "" }
+          if (-not $BASE) {
+            Write-Output "::error::no console tunnel available."
+            Get-Content cloudflared.out,cloudflared.err,bore8082.err,bore8082.out -ErrorAction SilentlyContinue
+            exit 1
           }
+          Write-Output "CONSOLE_URL=$BASE"
+          Write-Output "MAROHUB_CONSOLE=$BASE"; Write-Output "::notice title=Machine console::$BASE"
+          Write-Output "::notice title=Web terminal::$BASE/term/"
+          Write-Output "::notice title=File manager::$BASE/files  (user runner / password $PASS)"
+          if ($r) { Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop::$r  (user runneradmin / password $PASS)" }
 
           $summary = "## Windows machine`n`n"
-          if ($t) { $summary += "* **Terminal** (any browser): http://$t`n" }
-          if ($f) { $summary += "* **Files** (filebrowser): http://$f - user ``runner``, password ``$PASS`` `n" }
+          $summary += "* **Console** (one URL - Terminal / Files): $BASE`n"
           if ($r) { $summary += "* **Desktop** (RDP client): $r - user ``runneradmin``, password ``$PASS`` `n" }
           $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
@@ -97,9 +121,10 @@ jobs:
           # step as the tunnels, and guarded so a hiccup can never take the machine down.
           try {
             $ep = @{}
-            if ($t) { $ep["MAROHUB_TERMINAL"] = "http://$t" }
-            if ($f) { $ep["MAROHUB_FILES"] = "http://$f" }
-            if ($r) { $ep["MAROHUB_RDP"] = "$r" }
+            $ep["MAROHUB_CONSOLE"] = $BASE
+            $ep["MAROHUB_TERMINAL"] = "$BASE/term/"
+            $ep["MAROHUB_FILES"] = "$BASE/files"
+            if ($r) { $ep["MAROHUB_RDP"] = $r }
             $state = @{ run_id = $env:GITHUB_RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
             New-Item -ItemType Directory -Force -Path .machine-state | Out-Null
             Set-Content -Path .machine-state/windows.json -Value $state -NoNewline -Encoding utf8

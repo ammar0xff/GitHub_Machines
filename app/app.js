@@ -8,12 +8,14 @@ const MACHINES = {
 };
 
 const PORTALS = [
+  { key: "MAROHUB_CONSOLE", label: "Console" },
   { key: "MAROHUB_TERMINAL", label: "Terminal" },
   { key: "MAROHUB_FILES", label: "Files" },
   { key: "MAROHUB_DESKTOP", label: "Desktop" },
   { key: "MAROHUB_RDP", label: "Desktop" },
 ];
 const PORTAL_LABELS = {
+  MAROHUB_CONSOLE: "Console",
   MAROHUB_TERMINAL: "Terminal",
   MAROHUB_FILES: "Files",
   MAROHUB_DESKTOP: "Desktop",
@@ -532,11 +534,12 @@ function portalButtons(kind, s) {
     const label = PORTAL_LABELS[p.key];
     if (seen[label]) continue;
     seen[label] = true;
-    items.push({ label, url });
+    items.push({ label, url, isConsole: p.key === "MAROHUB_CONSOLE" });
   }
-  return items.map(({ label, url }) => {
+  items.sort((a, b) => (b.isConsole ? 1 : 0) - (a.isConsole ? 1 : 0));
+  return items.map(({ label, url, isConsole }) => {
     const isHttp = /^https?:\/\//.test(url || "");
-    const tile = el("div", { className: "portal" });
+    const tile = el("div", { className: "portal" + (isConsole ? " console" : "") });
     tile.appendChild(el("span", { className: "portal-label" }, label));
     tile.appendChild(el("code", { className: "portal-url" }, url.replace(/^https?:\/\//, "")));
     if (isHttp) {

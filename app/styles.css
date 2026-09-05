@@ -9,6 +9,7 @@
   --muted: #8b98a8;
   --accent: #f0a944;
   --accent-ink: #14100a;
+  --accent-soft: #1b1610;
   --danger: #e5484d;
   --ok: #3fb950;
   --code: #7ee0a3;
@@ -265,6 +266,24 @@ pre {
 .portal-copy:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+.portal.console {
+  grid-column: 1 / -1;
+  background: var(--accent-soft);
+  border-color: var(--border-strong);
+}
+.portal.console .portal-label {
+  font-size: 16px;
+}
+.portal.console .portal-open {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.portal.console .portal-open:hover {
+  filter: brightness(1.06);
+  color: var(--accent-ink);
 }
 
 .lifetime {
