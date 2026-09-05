@@ -11,6 +11,8 @@ jobs:
   machine:
     runs-on: macos-latest
     timeout-minutes: 435
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +98,24 @@ jobs:
             echo ""
             echo "> The machine lives until this run ends or ~6h, whichever comes first."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          T="${T}" F="${F}" V="${V}" PASS="${PASS}"
+          BODY="{\"run_id\":\"$RUN_ID\",\"endpoints\":{"
+          BODY="$BODY\"MAROHUB_TERMINAL\":\"http://$T\""
+          [ -n "$F" ] && BODY="$BODY,\"MAROHUB_FILES\":\"http://$F\""
+          [ -n "$V" ] && BODY="$BODY,\"MAROHUB_DESKTOP\":\"http://$V/vnc.html\""
+          BODY="$BODY}}"
+          gh api -X PUT \
+            "repos/${{ github.repository }}/contents/.machine-state/macos.json" \
+            -f "message=machine state" \
+            -f "branch=machine-state/macos" \
+            -f "content=$(printf '%s' "$BODY" | base64 | tr -d '\n')" \
+            --jq '.content.sha'
 
       - name: Keep the machine alive
         run: |

@@ -138,6 +138,32 @@ function api() {
         return r.text();
       });
     },
+    stateJson(kind) {
+      // Machine workflows publish live endpoints to a state branch; run logs are
+      // only archived once the run completes, so this is how we read them mid-run.
+      const branch = "machine-state/" + kind;
+      const url =
+        "https://api.github.com/repos/" +
+        own + "/" + rep + "/contents/.machine-state/" + kind + ".json?ref=" + encodeURIComponent(branch);
+      return fetch(url, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          ...(config.token ? { Authorization: "Bearer " + config.token } : {}),
+        },
+      }).then((r) => {
+        if (r.status === 404) return null;
+        if (r.status === 403 || r.status === 401) throw new Error("state-auth");
+        if (!r.ok) throw new Error("state-" + r.status);
+        return r.json().then((j) => {
+          try {
+            const raw = j && j.content ? atob(String(j.content).replace(/\s/g, "")) : null;
+            return raw ? JSON.parse(raw) : null;
+          } catch (_) {
+            return null;
+          }
+        });
+      });
+    },
     cancel(runId) {
       return gh("/repos/" + own + "/" + rep + "/actions/runs/" + runId + "/cancel", "POST");
     },
@@ -265,29 +291,36 @@ async function poller(kind) {
       return;
     }
 
-    if (r.status === "in_progress") {
-      if (s.status !== "running" && !Object.keys(s.endpoints).length) {
-        s.status = "running";
-        persistSessions();
-        renderAll();
-      }
-      if (!Object.keys(s.endpoints).length && i >= sinceLog) {
-        // fetch logs until the tunnel endpoints appear
-        sinceLog = i + (config.token ? 2 : 2); // every ~12s / ~80s
-        let logs;
-        try {
-          logs = await a.logs(s.runId);
-        } catch (e) {
-          const tokenIssue = String((e && e.message) || "") === "logs-auth";
-          if (tokenIssue && !s.note) {
-            s.note = "Your token can’t read run logs. It needs Actions: Read access in Settings.";
-            persistSessions();
-            renderAll();
-          }
-          continue;
+if (r.status === "in_progress") {
+        if (s.status !== "running" && !Object.keys(s.endpoints).length) {
+          s.status = "running";
+          persistSessions();
+          renderAll();
         }
-        const found = parseEndpoints(logs);
-        if (Object.keys(found).length) {
+        if (!Object.keys(s.endpoints).length && i >= sinceLog) {
+          // Workflows publish endpoints to a state branch; fall back to run logs.
+          sinceLog = i + (config.token ? 2 : 2); // every ~12s
+          let found = {};
+          try {
+            const state = await a.stateJson(kind);
+            if (state && String(state.run_id) === String(s.runId)) found = parseStateEndpoints(state);
+          } catch (_) {}
+          if (!Object.keys(found).length) {
+            let logs;
+            try {
+              logs = await a.logs(s.runId);
+            } catch (e) {
+              const tokenIssue = String((e && e.message) || "") === "logs-auth";
+              if (tokenIssue && !s.note) {
+                s.note = "Your token can’t read run logs. It needs Actions: Read access in Settings.";
+                persistSessions();
+                renderAll();
+              }
+              continue;
+            }
+            found = parseEndpoints(logs);
+          }
+          if (Object.keys(found).length) {
           Object.assign(s.endpoints, found);
           s.bootedAt = Date.now();
           s.status = "ready";
@@ -327,6 +360,16 @@ function parseEndpoints(logText) {
       const m = http || bare;
       if (m && !out[p.key]) out[p.key] = m[0];
     }
+  }
+  return out;
+}
+
+function parseStateEndpoints(state) {
+  const out = {};
+  const ep = (state && state.endpoints) || {};
+  for (const p of PORTALS) {
+    const v = ep[p.key];
+    if (v && !out[p.key]) out[p.key] = String(v);
   }
   return out;
 }
