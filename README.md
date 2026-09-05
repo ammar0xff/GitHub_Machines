@@ -9,7 +9,8 @@
 </p>
 
 **GitHub Machines** is an automation solution that spins up a temporary Windows, Ubuntu, or macOS machine on a GitHub
-Actions runner and exposes it through a public tunnel — no account or token required.
+Actions runner and exposes it through a public tunnel — no account or token required. It ships with a small web app
+(`app/`) that launches, tracks, and stops machines from your phone or browser.
 
 ## Table of Contents
 
@@ -20,6 +21,7 @@ Actions runner and exposes it through a public tunnel — no account or token re
     <li><a href="#installation">Installation</a></li>
     <li><a href="#usage">Usage</a>
       <ul>
+        <li><a href="#web-app-recommended">Web App (recommended)</a></li>
         <li><a href="#triggering-the-workflows">Triggering the Workflows</a></li>
         <li><a href="#accessing-the-machines">Accessing the Machines</a>
           <ul>
@@ -47,6 +49,8 @@ Actions runner and exposes it through a public tunnel — no account or token re
 - **Secure Access**: [bore](https://github.com/ekzhang/bore) creates an encrypted tunnel into the machine.
 - **Customizable Workflows**: Modify the GitHub Actions workflows to suit your requirements.
 - **Spins Down Automatically**: The machine stops when the run ends, so nothing lingers.
+- **One-Tap Launcher App**: the bundled `app/` is a standalone PWA (no build step) with three machine cards that start,
+  track, and stop machines, and surface Terminal / Files / Desktop access links.
 
 ### Built With
 
@@ -56,6 +60,7 @@ Actions runner and exposes it through a public tunnel — no account or token re
   <img src="https://img.shields.io/badge/PowerShell-5391FE?style=for-the-badge&logo=powershell&logoColor=white" />
   <img src="https://img.shields.io/badge/bore-10B981?style=for-the-badge&logo=rust&logoColor=white"/>
   <img src="https://img.shields.io/badge/ttyd-2496ED?style=for-the-badge&logo=docker&logoColor=white"/>
+  <img src="https://img.shields.io/badge/vanilla%20js-black?style=for-the-badge&logo=javascript&logoColor=white"/>
 </p>
 
 ## Installation
@@ -73,8 +78,40 @@ Actions runner and exposes it through a public tunnel — no account or token re
 
 ## Usage
 
-Once you've forked the repository, start a machine from the **Actions** tab. GitHub Actions is free for public
-repositories and includes a monthly quota on private ones.
+Once you've forked the repository, start a machine from the **Actions** tab, or from the launcher app. GitHub Actions is
+free for public repositories and includes a monthly quota on private ones.
+
+### Web App (recommended)
+
+The app lives in `app/` and is plain HTML/CSS/JS — no build step. Host the folder anywhere, e.g. on GitHub Pages. It
+keeps the machine list and your settings in `localStorage`, updates live via the Actions API, and never stores secrets
+server-side.
+
+Config lives behind the **Settings** sheet:
+
+| Field       | Required | What to put                                                       |
+|-------------|----------|-------------------------------------------------------------------|
+| Repo        | yes      | `owner/repo` (your fork, e.g. `you/GitHub_Machines`)              |
+| Token       | yes      | a Personal Access Token with **Actions: Read and write** scope    |
+| Password    | optional | how you'll log into Desktop/Files; shown next to the links        |
+
+Launching and tracking both call the GitHub API, so the token is required even for public repos. To keep the machine
+alive, the run holds a blocking `wait` step instead of ending.
+
+Each card shows a live status strip (run number, current step, ticking countdown) and, once the machine is up, action
+tiles:
+
+| Machine | Terminal | Files          | Desktop                 |
+|---------|----------|----------------|-------------------------|
+| Ubuntu  | bash     | file manager   | noVNC (browser)         |
+| Windows | cmd      | —              | RDP (`host:port`)       |
+| macOS   | bash     | —              | VNC (`host:port`)       |
+
+- **Open** jumps straight to the access link in a new tab; **copy** grabs the address (handy for RDP/VNC `host:port`).
+- **Stop machine** cancels the run; the machine dies with it.
+
+> The machine lives until the run finishes, you press **Stop machine**, or the `bore.pub` relay closes the tunnel
+> (~6 hours maximum). Treat the tunnel URL as your key to the machine — share it the way you'd share a password.
 
 ### Triggering the Workflows
 
@@ -82,6 +119,9 @@ repositories and includes a monthly quota on private ones.
 2. Select the desired workflow (**Ubuntu**, **macOS**, or **Windows**).
 3. Click **Run workflow**.
 4. Wait for the job to boot, then open the machine as described below.
+
+The launcher app starts the same workflows without visiting the Actions tab: it fires a `repository_dispatch` event
+(`machine-ubuntu`, `machine-windows`, or `machine-macos`), then tracks the matching run from its logs.
 
 > Each machine lives until the run finishes or the `bore.pub` relay closes the tunnel (~6 hours maximum). You can stop
 > it early by canceling the run.
