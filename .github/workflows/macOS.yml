@@ -1,5 +1,8 @@
 name: macOS
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [machine-macos]
 concurrency:
   group: macos-machine
   cancel-in-progress: false
@@ -18,6 +21,12 @@ jobs:
           tar -xzf gotty.tar.gz
           sudo mv gotty /usr/local/bin
 
+      - name: Install filebrowser
+        run: |
+          curl -fsSL "https://github.com/filebrowser/filebrowser/releases/download/v2.63.23/darwin-arm64-filebrowser.tar.gz" -o filebrowser.tar.gz
+          tar -xzf filebrowser.tar.gz
+          sudo mv filebrowser /usr/local/bin
+
       - name: Install bore
         run: |
           ARCH=$(uname -m)
@@ -30,32 +39,62 @@ jobs:
           tar -xzf bore.tar.gz
           sudo mv bore /usr/local/bin
 
-      - name: Start web terminal
+      - name: Configure filebrowser
+        run: |
+          cd /tmp
+          filebrowser config init
+          filebrowser users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" --perm.admin
+
+      - name: Enable Screen Sharing (best effort)
+        run: |
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on -restart -agent -privs -all \
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -clientopts -setvncpw -vncpw "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" \
+            || echo "Screen Sharing could not be enabled on this image"
+          sleep 2
+
+      - name: Start services
         run: |
           export TERM=xterm
           nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
+          cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 > /tmp/filebrowser.log 2>&1 &
           sleep 3
 
-      - name: Start tunnel (keeps the machine alive)
+      - name: Start tunnels (keeps the machine alive)
         run: |
-          bore local 8080 --to bore.pub > /tmp/bore.log 2>&1 &
-          BORE_PID=$!
-          for i in $(seq 1 30); do
-            grep -q 'listening at ' /tmp/bore.log && break
-            sleep 2
-          done
-          ENDPOINT=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/bore.log | head -n1)
-          if [ -n "$ENDPOINT" ]; then
-            echo "::notice title=Web terminal::http://${ENDPOINT}"
-            {
-              echo "## macOS machine"
-              echo ""
-              echo "* Web terminal (any browser, any device): **http://${ENDPOINT}**"
-              echo ""
-              echo "> The machine lives until this run ends or ~6h, whichever comes first."
-            } >> "$GITHUB_STEP_SUMMARY"
+          bore local 8080 --to bore.pub > /tmp/t8080.log 2>&1 &
+          bore local 8081 --to bore.pub > /tmp/t8081.log 2>&1 &
+          bore local 5900 --to bore.pub > /tmp/t5900.log 2>&1 &
+          sleep 8
+
+          T=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8080.log | head -n1)
+          F=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8081.log | head -n1)
+          V=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t5900.log | head -n1)
+          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}"
+
+          [ -n "$T" ] && echo "MAROHUB_TERMINAL=http://${T}" && echo "::notice title=Web terminal::http://${T}"
+          [ -n "$F" ] && echo "MAROHUB_FILES=http://${F}" && echo "::notice title=File manager::http://${F}  (user runner / password ${PASS})"
+          if [ -n "$V" ] && nc -z localhost 5900 2>/dev/null; then
+            echo "MAROHUB_DESKTOP=http://${V}" && echo "::notice title=Desktop (VNC)::${V}  (user runner / password ${PASS})"
           else
-            echo "::error::bore did not report an endpoint. Tunnel log:"
-            cat /tmp/bore.log
+            V=""
           fi
-          wait $BORE_PID
+
+          if [ -z "$T" ] && [ -z "$F" ] && [ -z "$V" ]; then
+            echo "::error::bore did not report any endpoints. Tunnel logs:"
+            cat /tmp/t8080.log /tmp/t8081.log /tmp/t5900.log
+          fi
+
+          {
+            echo "## macOS machine"
+            echo ""
+            [ -n "$T" ] && echo "* **Terminal** (any browser): http://${T}"
+            [ -n "$F" ] && echo "* **Files** (filebrowser): http://${F}  — user \`runner\`, password \`${PASS}\`"
+            [ -n "$V" ] && echo "* **Desktop** (VNC client): ${V}  — user \`runner\`, password \`${PASS}\`"
+            if [ -z "$V" ]; then echo "* **Desktop**: not available — Screen Sharing is off on this image (use Finder > Go > Connect to Server with \`vnc://…\` if enabled)"; fi
+            echo ""
+            echo "> The machine lives until this run ends or ~6h, whichever comes first."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          wait

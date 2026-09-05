@@ -1,5 +1,8 @@
 name: Ubuntu
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [machine-ubuntu]
 concurrency:
   group: ubuntu-machine
   cancel-in-progress: false
@@ -12,11 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system packages
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xvfb x11vnc fluxbox x11-utils
+          python3 -m pip install --quiet websockify
+
       - name: Install ttyd
         run: |
           curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" -o ttyd
           chmod +x ttyd
           sudo mv ttyd /usr/local/bin
+
+      - name: Install filebrowser
+        run: |
+          curl -fsSL "https://github.com/filebrowser/filebrowser/releases/download/v2.63.23/linux-amd64-filebrowser.tar.gz" -o filebrowser.tar.gz
+          tar -xzf filebrowser.tar.gz
+          sudo mv filebrowser /usr/local/bin
+
+      - name: Install noVNC
+        run: |
+          curl -fsSL "https://github.com/novnc/noVNC/releases/download/v1.5.0/noVNC-1.5.0.tar.gz" -o novnc.tar.gz
+          tar -xzf novnc.tar.gz
+          sudo mkdir -p /usr/share/novnc
+          sudo cp -r noVNC-1.5.0/* /usr/share/novnc/
 
       - name: Install bore
         run: |
@@ -24,32 +46,53 @@ jobs:
           tar -xzf bore.tar.gz
           sudo mv bore /usr/local/bin
 
-      - name: Start web terminal
+      - name: Configure filebrowser
+        run: |
+          cd /tmp
+          filebrowser config init
+          filebrowser users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" --perm.admin
+
+      - name: Start services
         run: |
           export TERM=xterm
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1600x1000x24 > /tmp/xvfb.log 2>&1 &
+          fluxbox > /tmp/fluxbox.log 2>&1 &
+          x11vnc -display :99 -forever -shared -rfbport 5900 -nopw > /tmp/x11vnc.log 2>&1 &
+          websockify --web=/usr/share/novnc 6080 localhost:5900 > /tmp/websockify.log 2>&1 &
           nohup ttyd -W -p 8080 -t titleFixed="GitHub Machine - Ubuntu" bash > /tmp/ttyd.log 2>&1 &
-          sleep 3
+          cd /tmp && nohup /usr/local/bin/filebrowser -r / -a 0.0.0.0 -p 8081 > /tmp/filebrowser.log 2>&1 &
+          sleep 5
 
-      - name: Start tunnel (keeps the machine alive)
+      - name: Start tunnels (keeps the machine alive)
         run: |
-          bore local 8080 --to bore.pub > /tmp/bore.log 2>&1 &
-          BORE_PID=$!
-          for i in $(seq 1 30); do
-            grep -q 'listening at ' /tmp/bore.log && break
-            sleep 2
-          done
-          ENDPOINT=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/bore.log | head -n1)
-          if [ -n "$ENDPOINT" ]; then
-            echo "::notice title=Web terminal::http://${ENDPOINT}"
-            {
-              echo "## Ubuntu machine"
-              echo ""
-              echo "* Web terminal (any browser, any device): **http://${ENDPOINT}**"
-              echo ""
-              echo "> The machine lives until this run ends or ~6h, whichever comes first."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error::bore did not report an endpoint. Tunnel log:"
-            cat /tmp/bore.log
+          bore local 8080 --to bore.pub > /tmp/t8080.log 2>&1 &
+          bore local 8081 --to bore.pub > /tmp/t8081.log 2>&1 &
+          bore local 6080 --to bore.pub > /tmp/t6080.log 2>&1 &
+          sleep 8
+
+          T=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8080.log | head -n1)
+          F=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8081.log | head -n1)
+          V=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t6080.log | head -n1)
+          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}"
+
+          [ -n "$T" ] && echo "MAROHUB_TERMINAL=http://${T}" && echo "::notice title=Web terminal::http://${T}"
+          [ -n "$F" ] && echo "MAROHUB_FILES=http://${F}" && echo "::notice title=File manager::http://${F}  (user runner / password ${PASS})"
+          [ -n "$V" ] && echo "MAROHUB_DESKTOP=http://${V}/vnc.html" && echo "::notice title=Desktop::http://${V}/vnc.html"
+
+          if [ -z "$T" ] && [ -z "$F" ] && [ -z "$V" ]; then
+            echo "::error::bore did not report any endpoints. Tunnel logs:"
+            cat /tmp/t8080.log /tmp/t8081.log /tmp/t6080.log
           fi
-          wait $BORE_PID
+
+          {
+            echo "## Ubuntu machine"
+            echo ""
+            [ -n "$T" ] && echo "* **Terminal** (any browser): http://${T}"
+            [ -n "$F" ] && echo "* **Files** (filebrowser): http://${F}  — user \`runner\`, password \`${PASS}\`"
+            [ -n "$V" ] && echo "* **Desktop** (noVNC, click Connect): http://${V}/vnc.html"
+            echo ""
+            echo "> The machine lives until this run ends or ~6h, whichever comes first."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          wait

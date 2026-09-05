@@ -1,5 +1,8 @@
 name: Windows
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [machine-windows]
 concurrency:
   group: windows-machine
   cancel-in-progress: false
@@ -21,36 +24,71 @@ jobs:
         run: |
           Invoke-WebRequest "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe" -OutFile ttyd.exe
 
+      - name: Download filebrowser
+        run: |
+          Invoke-WebRequest "https://github.com/filebrowser/filebrowser/releases/download/v2.63.23/windows-amd64-filebrowser.zip" -OutFile filebrowser.zip
+          Expand-Archive filebrowser.zip -DestinationPath .
+
+      - name: Configure filebrowser
+        run: |
+          $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
+          New-Item -ItemType Directory -Force -Path "$env:TEMP\fb" | Out-Null
+          Push-Location "$env:TEMP\fb"
+          & $fb config init
+          & $fb users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" --perm.admin
+          Pop-Location
+
       - name: Enable Remote Desktop
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" -Force)
 
-      - name: Start web terminal
+      - name: Start services
         run: |
           Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","cmd.exe") -WindowStyle Hidden
+          $fb = (Get-ChildItem -Recurse -Filter filebrowser.exe | Select-Object -First 1).FullName
+          Start-Process -FilePath $fb -ArgumentList @("-r","C:\","-a","0.0.0.0","-p","8081") -WorkingDirectory "$env:TEMP\fb" -WindowStyle Hidden
 
       - name: Create tunnels (keeps the machine alive)
         run: |
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8080","--to","bore.pub") -RedirectStandardOutput bore8080.out -RedirectStandardError bore8080.err
+          Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8081","--to","bore.pub") -RedirectStandardOutput bore8081.out -RedirectStandardError bore8081.err
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
           Start-Sleep -Seconds 12
 
-          $web = $null
-          $rdp  = $null
-          if ((Get-Content bore8080.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $web = $matches[1] }
-          if ((Get-Content bore3389.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $rdp = $matches[1] }
+          $t = $null
+          $f = $null
+          $r = $null
+          if ((Get-Content bore8080.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $t = $matches[1] }
+          if ((Get-Content bore8081.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $f = $matches[1] }
+          if ((Get-Content bore3389.err -Raw -ErrorAction SilentlyContinue) -match "listening at (\S+)") { $r = $matches[1] }
+          $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}"
 
-          if ($web) {
-            Write-Output "::notice title=Web terminal::http://$web"
-            Write-Output "::notice title=Remote Desktop::$rdp  (user runneradmin / password P@ssw0rd!)"
-            $summary = "## Windows machine`n`n* Web terminal (any browser, any device): **http://$web**`n`n* Remote Desktop (RDP client): connect to **$rdp** with user **runneradmin** and password **P@ssw0rd!**`n`n> The machine lives until this run ends or ~6h, whichever comes first."
-            $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } else {
-            Write-Output "::warning::Could not determine tunnel endpoints; check bore*.err"
-            Get-Content bore8080.err,bore3389.err -ErrorAction SilentlyContinue
+          if ($t) {
+            Write-Output "MAROHUB_TERMINAL=http://$t"
+            Write-Output "::notice title=Web terminal::http://$t"
           }
+          if ($f) {
+            Write-Output "MAROHUB_FILES=http://$f"
+            Write-Output "::notice title=File manager::http://$f  (user runner / password $PASS)"
+          }
+          if ($r) {
+            Write-Output "MAROHUB_RDP=$r"
+            Write-Output "::notice title=Remote Desktop::$r  (user runneradmin / password $PASS)"
+          }
+
+          if (-not $t -and -not $f -and -not $r) {
+            Write-Output "::error::bore did not report any endpoints."
+            Get-Content bore8080.err,bore8081.err,bore3389.err -ErrorAction SilentlyContinue
+          }
+
+          $summary = "## Windows machine`n`n"
+          if ($t) { $summary += "* **Terminal** (any browser): http://$t`n" }
+          if ($f) { $summary += "* **Files** (filebrowser): http://$f - user ``runner``, password ``$PASS`` `n" }
+          if ($r) { $summary += "* **Desktop** (RDP client): $r - user ``runneradmin``, password ``$PASS`` `n" }
+          $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
           Wait-Process -Name bore -ErrorAction SilentlyContinue
