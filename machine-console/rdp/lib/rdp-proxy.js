@@ -1,6 +1,7 @@
 'use strict';
 
 const tls = require('tls');
+const net = require('net');
 
 // ── RDCleanPath ASN.1 DER Constants ──
 const VERSION_1 = 3390; // 3389 + 1
@@ -304,11 +305,18 @@ function parseDestination(destination) {
 
 /**
  * Perform the RDCleanPath proxy handshake:
- * 1. TLS connect to RDP server (modern RDP: TLS is negotiated first, then
- *    X.224 Connection Request is sent inside the TLS session)
- * 2. Send X.224 Connection Request inside TLS
- * 3. Read X.224 Connection Confirm inside TLS
- * 4. Extract server certificates
+ * 1. TCP connect to RDP server.
+ * 2. Send X.224 Connection Request over raw TCP.
+ * 3. Read the X.224 Connection Confirm. If the server replies with a
+ *    negotiatedProtocol of SSL (1) or HYBRID (2), upgrade the existing TCP
+ *    socket to TLS and re-send nothing — the server expects the credential /
+ *    TLS upgrade over the same socket. If the server accepted plaintext
+ *    (selectedProtocol = 0), keep the raw TCP socket.
+ * 4. Extract server certificates when a TLS session is active.
+ *
+ * The runner is configured with NLA disabled, so this server is expected to
+ * accept the plaintext CR (selectedProtocol = 0); the TLS upgrade path is kept
+ * as a fallback for servers that still demand SSL/HYBRID.
  *
  * @param {string} host
  * @param {number} port
@@ -319,31 +327,47 @@ function performRDPHandshake(host, port, x224Request) {
     return new Promise((resolve, reject) => {
         const logPrefix = `[${host}:${port}]`;
 
-        const tlsSocket = tls.connect({
-            host,
-            port,
-            servername: host,
-            rejectUnauthorized: false, // RDP servers use self-signed certs
-            timeout: 15000,
-        }, () => {
-            console.log(`${logPrefix} ✓ TLS handshake completed`);
-
-            // Step 2: Send X.224 Connection Request inside the TLS session
-            tlsSocket.write(x224Request, () => {
-                console.log(`${logPrefix} ✓ Sent X.224 Connection Request inside TLS (${x224Request.length} bytes)`);
+        const tcpSocket = net.createConnection({ host, port }, () => {
+            console.log(`${logPrefix} ✓ TCP connection established`);
+            tcpSocket.setTimeout(15000);
+            tcpSocket.write(x224Request, () => {
+                console.log(`${logPrefix} ✓ Sent X.224 Connection Request (${x224Request.length} bytes)`);
             });
+        });
 
-            // Step 3: Read X.224 Connection Confirm inside TLS
-            tlsSocket.once('data', (x224Response) => {
-                console.log(`${logPrefix} ✓ Received X.224 Connection Confirm inside TLS (${x224Response.length} bytes)`);
+        tcpSocket.once('error', (err) => {
+            reject(new Error(`TCP/RDP connection failed: ${err.message}`));
+        });
 
-                if (x224Response.length === 0) {
-                    tlsSocket.destroy();
-                    reject(new Error('RDP server closed connection without X.224 response'));
-                    return;
-                }
+        tcpSocket.on('timeout', () => {
+            tcpSocket.destroy();
+            reject(new Error('Connection timed out'));
+        });
 
-                // Step 4: Extract server certificates
+        // Read the X.224 Connection Confirm, then decide plaintext vs TLS upgrade.
+        tcpSocket.once('data', (x224Response) => {
+            console.log(`${logPrefix} ✓ Received X.224 Connection Confirm (${x224Response.length} bytes)`);
+
+            if (x224Response.length === 0) {
+                tcpSocket.destroy();
+                reject(new Error('RDP server closed connection without X.224 response'));
+                return;
+            }
+
+            const selectedProtocol = readNegotiatedProtocol(x224Response);
+            const needsTls = selectedProtocol === 1 /* SSL */ || selectedProtocol === 2 /* HYBRID */;
+
+            if (!needsTls) {
+                // Plaintext RDP accepted — relay over the raw socket with no certs.
+                console.log(`${logPrefix} ✓ Server accepted plaintext RDP (protocol=${selectedProtocol})`);
+                resolve({ x224Response: Buffer.from(x224Response), certChain: [], tlsSocket: tcpSocket });
+                return;
+            }
+
+            // Server demands SSL/HYBRID — upgrade the existing socket to TLS.
+            console.log(`${logPrefix} ✓ Upgrading to TLS (negotiated protocol=${selectedProtocol})`);
+            const tlsSocket = tls.connect({ socket: tcpSocket, servername: host, rejectUnauthorized: false }, () => {
+                console.log(`${logPrefix} ✓ TLS handshake completed`);
                 try {
                     const peerCert = tlsSocket.getPeerCertificate(true);
                     const certChain = extractCertChain(peerCert);
@@ -353,18 +377,45 @@ function performRDPHandshake(host, port, x224Request) {
                     reject(new Error(`Certificate extraction failed: ${err.message}`));
                 }
             });
-        });
 
-        tlsSocket.once('error', (err) => {
-            reject(new Error(`TLS handshake failed: ${err.message}`));
-        });
-
-        // Timeout for the whole handshake
-        tlsSocket.on('timeout', () => {
-            tlsSocket.destroy();
-            reject(new Error('Connection timed out'));
+            tlsSocket.once('error', (err) => {
+                reject(new Error(`TLS handshake failed: ${err.message}`));
+            });
         });
     });
+}
+
+/**
+ * Read the negotiatedProtocol field from an RDP Negotiation Response.
+ *
+ * X.224 CR/CC TPKT header:
+ *   [0..3] TPKT (03 00 len_hi len_lo)
+ *   [4]    Length indicator (X.224 header)
+ *   [5]    X.224 type: 0xE0 CR, 0xD0 CC, 0x03 error
+ *   [6..7] dst/src ref
+ *   [8]    class/option
+ *   [9..10] User Data length (hi, lo)
+ *   [11..14] RDP Negotiation Request/Response
+ *     [11] type (0x01 for Response)
+ *     [12] flags
+ *     [13..14] length (0x0008)
+ *     [15..18] selectedProtocol
+ *
+ * For an error CC (type 0x03), the failure code is at byte offset 8.
+ *
+ * @param {Buffer} cc
+ * @returns {number}
+ */
+function readNegotiatedProtocol(cc) {
+    try {
+        const type = cc[5];
+        // Both the RDP Negotiation failure code and selectedProtocol are the
+        // trailing 4 bytes of the 19-byte Negotiation Response (little-endian).
+        if ((type === 0x03 || type === 0xd0) && cc.length >= 19) {
+            return cc.readUInt32LE(15);
+        }
+    } catch (_) { /* ignore malformed */ }
+    return -1;
 }
 
 /**
