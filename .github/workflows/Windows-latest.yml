@@ -42,12 +42,14 @@ jobs:
 
       - name: Enable Remote Desktop
         run: |
-          # NLA (UserAuthentication=1) demands CredSSP during negotiation, which the embedded
-          # HTTPS relay and browser RDP client do not speak. Disable it so SSL-only
-          # negotiation succeeds and the relay handshake can complete.
+          # Force the SSL (TLS) security layer with NLA off. This makes the
+          # embedded HTTPS relay deterministic: the runner answers a TLS
+          # ClientHello first and accepts the X.224 Connection Request inside
+          # TLS, with no CredSSP demanded. (SecurityLayer=0/1 vary per run and
+          # break the relay, 'negotiate' machines pick HYBRID randomly.)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 2
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MinEncryptionLevel" -Value 1
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Restart-Service TermService -Force
