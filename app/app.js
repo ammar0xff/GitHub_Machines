@@ -51,7 +51,7 @@ function loadConfig() {
   return defaultConfig();
 }
 function defaultConfig() {
-  return { repo: "ammar0xff/GitHub_Machines", token: "", password: "P@ssw0rd!" };
+  return { repo: "ammar0xff/GitHub_Machines", token: "", password: "P@ssw0rd!123" };
 }
 function persistConfig() {
   localStorage.setItem(LS_CONFIG, JSON.stringify(config));

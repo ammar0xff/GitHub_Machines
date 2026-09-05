@@ -43,14 +43,14 @@ jobs:
         run: |
           cd /tmp
           filebrowser config init
-          filebrowser users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" --perm.admin
+          filebrowser users add runner "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" --perm.admin
 
       - name: Enable Screen Sharing (best effort)
         run: |
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on -restart -agent -privs -all \
             -clientopts -setvnclegacy -vnclegacy yes \
-            -clientopts -setvncpw -vncpw "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}" \
+            -clientopts -setvncpw -vncpw "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" \
             || echo "Screen Sharing could not be enabled on this image"
           sleep 2
 
@@ -71,7 +71,7 @@ jobs:
           T=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8080.log | head -n1)
           F=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t8081.log | head -n1)
           V=$(grep -oE '[a-z0-9.-]+:[0-9]+' /tmp/t5900.log | head -n1)
-          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!' }}"
+          PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
 
           [ -n "$T" ] && echo "MAROHUB_TERMINAL=http://${T}" && echo "::notice title=Web terminal::http://${T}"
           [ -n "$F" ] && echo "MAROHUB_FILES=http://${F}" && echo "::notice title=File manager::http://${F}  (user runner / password ${PASS})"

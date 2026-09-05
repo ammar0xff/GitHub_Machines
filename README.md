@@ -146,7 +146,7 @@ password.
   in any modern browser on any device.
 - **Full desktop via RDP**: open a remote desktop client (built into Windows, or the Microsoft Remote Desktop app for
   macOS/iOS/Android) and connect to the `bore.pub:PORT` RDP endpoint from the run summary with user **`runneradmin`** and
-  password **`P@ssw0rd!`**. Some RDP clients need the port appended as `bore.pub:PORT`.
+  password **`P@ssw0rd!123`**. Some RDP clients need the port appended as `bore.pub:PORT`.
 
 #### Ubuntu
 

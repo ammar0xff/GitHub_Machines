@@ -41,7 +41,7 @@ function closeSettings() {
 function saveSettings() {
   config.repo = $("set-repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
   config.token = $("set-token").value.trim();
-  config.password = $("set-password").value.trim() || "P@ssw0rd!";
+  config.password = $("set-password").value.trim() || "P@ssw0rd!123";
   debugOpen = $("set-debug").checked;
   persistConfig();
   refreshHeader();
