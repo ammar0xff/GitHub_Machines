@@ -8,6 +8,7 @@ const net = require("net");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { spawn } = require("child_process");
 const { EventEmitter } = require("events");
 
 // Optional relay log: tee every console.log/error to a file so machine-side
@@ -33,9 +34,11 @@ const RDP = (process.env.RDP || "0") === "1";
 const RDP_USER = process.env.RDP_USER || "runneradmin";
 const RDP_ADDR = process.env.RDP_ADDR || "";
 const RDP_DIR = path.join(__dirname, "rdp");
-// macOS uses gotty (no -b flag) — strip the /term prefix on its way through so its
-// client (which builds WS from location.pathname) keeps working at /term/ws.
-const TERM_STRIP = (process.env.TERM_STRIP || "0") === "1";
+// When set, /term is served by this process itself (no external terminal
+// daemon needed): an upgrade to /term/ws spawns a shell and relays it over
+// WebSocket. Used on Windows where the ttyd win32 binary is unreliable.
+const BUILTIN_TERM = (process.env.BUILTIN_TERM || "0") === "1";
+const TERM_SHELL = process.env.TERM_SHELL || "cmd.exe";
 const TTYD_PORT = Number(process.env.TTYD_PORT || 8080);
 const ROOT = __dirname;
 
@@ -74,14 +77,6 @@ function serveConsole(res) {
   });
 }
 
-function termPath(url) {
-  if (!TERM_STRIP) return url;
-  const q = url.indexOf("?") === -1 ? "" : url.slice(url.indexOf("?"));
-  const p = url.indexOf("?") === -1 ? url : url.slice(0, url.indexOf("?"));
-  const stripped = p === "/term" ? "/" : p.replace(/^\/term/, "") || "/";
-  return stripped + q;
-}
-
 function proxyWeb(req, res, port) {
   const headers = Object.assign({}, req.headers, {
     host: "127.0.0.1:" + port,
@@ -93,7 +88,7 @@ function proxyWeb(req, res, port) {
   const upstream = http.request({
     host: "127.0.0.1",
     port,
-    path: termPath(req.url),
+    path: req.url,
     method: req.method,
     headers,
   }, (upres) => {
@@ -112,6 +107,98 @@ function proxyWeb(req, res, port) {
 function upgradeTarget(url) {
   if (url.startsWith("/term")) return TTYD_PORT;
   return null;
+}
+
+const TERM_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #d7d7d0; }
+  body { font: 13px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; padding: 10px 12px; }
+  #out { white-space: pre-wrap; word-break: break-word; margin: 0 0 8px; }
+  #line { display: flex; align-items: baseline; gap: 8px; }
+  #prompt { color: #f0a944; user-select: none; }
+  #inp { flex: 1; background: transparent; border: 0; outline: 0; color: #d7d7d0; font: inherit; }
+  #err { color: #e07a5f; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<div id="line"><span id="prompt">$ </span><input id="inp" autocomplete="off" autofocus spellcheck="false"></div>
+<script>
+(function () {
+  var out = document.getElementById("out");
+  var inp = document.getElementById("inp");
+  var pending = "";
+  function feed(t) {
+    pending += t;
+    var nl = pending.lastIndexOf("\\n");
+    if (nl !== -1) { out.textContent += pending.slice(0, nl + 1); pending = pending.slice(nl + 1); window.scrollTo(0, document.body.scrollHeight); }
+  }
+  var ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/term/ws");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = function () { feed("\\r\\n"); };
+  ws.onmessage = function (e) { feed(typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data)); };
+  ws.onclose = function () { out.textContent += "\\n[terminal closed]\\n"; inp.disabled = true; };
+  ws.onerror = function () { out.textContent += "\\n[terminal error]\\n"; };
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      var cmd = inp.value;
+      inp.value = "";
+      out.textContent += cmd + "\\r\\n";
+      if (ws.readyState === 1) ws.send(cmd + "\\r\\n");
+      e.preventDefault();
+    }
+  });
+})();
+</script>
+</body>
+</html>`;
+
+function serveTermPage(res) {
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(TERM_PAGE);
+}
+
+function handleTermUpgrade(req, socket, head) {
+  const key = req.headers["sec-websocket-key"];
+  if (!key) {
+    socket.destroy();
+    return;
+  }
+  socket.write(
+    "HTTP/1.1 101 Switching Protocols\r\n" +
+      "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+      "Sec-WebSocket-Accept: " + wsAccept(key) + "\r\n\r\n"
+  );
+  const shim = new WsShim(socket);
+  let child;
+  try {
+    child = spawn(TERM_SHELL, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  } catch (e) {
+    shim.close();
+    return;
+  }
+  child.stdout.on("data", (d) => shim.send(d));
+  child.stderr.on("data", (d) => shim.send(d));
+  child.on("error", () => shim.close());
+  child.on("close", () => shim.close());
+  shim.on("message", (b) => {
+    if (child && child.stdin.writable) child.stdin.write(b);
+  });
+  shim.on("close", () => {
+    if (child) child.kill();
+  });
+  shim.on("error", () => {
+    if (child) child.kill();
+  });
+  if (head && head.length) {
+    try { shim._feed(Buffer.from(head)); } catch (_) {}
+  }
 }
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -244,6 +331,7 @@ function handleRdpUpgrade(req, socket, head) {
       "Sec-WebSocket-Accept: " + wsAccept(key) + "\r\n\r\n"
   );
   const shim = new WsShim(socket);
+  shim.on("error", () => shim.close());
   try {
     require("./rdp/lib/rdp-proxy.js").handleConnection(shim);
   } catch (e) {
@@ -289,7 +377,10 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (u.startsWith("/term")) return proxyWeb(req, res, TTYD_PORT);
+  if (u.startsWith("/term")) {
+    if (BUILTIN_TERM) return serveTermPage(res, u);
+    return proxyWeb(req, res, TTYD_PORT);
+  }
   if (RDP && u.startsWith("/rdp")) return serveRdpStatic(res, u.slice("/rdp".length).split("?")[0]);
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("not found");
@@ -300,6 +391,9 @@ server.on("upgrade", (req, socket, head) => {
   if (RDP && (url === "/" || url === "/rdp/relay")) {
     return handleRdpUpgrade(req, socket, head);
   }
+  if (BUILTIN_TERM && url === "/term/ws") {
+    return handleTermUpgrade(req, socket, head);
+  }
   const port = upgradeTarget((req.url || "").split("?")[0]);
   if (!port) {
     socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
@@ -308,8 +402,7 @@ server.on("upgrade", (req, socket, head) => {
   }
   const client = net.connect(port, "127.0.0.1", () => {
     const headers = Object.assign({}, req.headers, { host: "127.0.0.1:" + port });
-    const pathToForward = termPath(req.url);
-    let raw = req.method + " " + pathToForward + " HTTP/1.1\r\n";
+    let raw = req.method + " " + req.url + " HTTP/1.1\r\n";
     for (const k of Object.keys(headers)) raw += k + ": " + String(headers[k]) + "\r\n";
     raw += "\r\n";
     client.write(Buffer.concat([Buffer.from(raw), head && head.length ? head : Buffer.alloc(0)]));

@@ -22,10 +22,6 @@ jobs:
           Invoke-WebRequest "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-pc-windows-msvc.zip" -OutFile bore.zip
           Expand-Archive bore.zip -DestinationPath .
 
-      - name: Download ttyd
-        run: |
-          Invoke-WebRequest "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.win32.exe" -OutFile ttyd.exe
-
       - name: Enable Remote Desktop
         run: |
           # Force the SSL (TLS) security layer with NLA off. This makes the
@@ -104,19 +100,18 @@ jobs:
           # URL-encoded copy for the embedded-Desktop link; the raw value stays for
           # human-readable notices. Keeps '#'/'&'/'=' in custom passwords from truncating.
           $PASS_ENC = [uri]::EscapeDataString($PASS)
-          Start-Process -FilePath ".\ttyd.exe" -ArgumentList @("-W","-p","8080","-b","/term","cmd.exe") -WindowStyle Hidden
 
           $env:PORT = "8082"
           $env:KIND = "windows"
           $env:LABEL = "GitHub Machine - Windows"
           $env:USER = "runner | runneradmin"
           $env:PASS = $PASS
+          $env:BUILTIN_TERM = "1"
+          $env:TERM_SHELL = "cmd.exe"
           $env:VNC = "0"
           $env:RDP = "1"
           $env:RDP_USER = "runneradmin"
           $env:RDP_ADDR = $r
-          $env:TERM_STRIP = "0"
-          $env:TTYD_PORT = "8080"
           $env:RELAY_LOG = "C:\relay.log"
           Start-Process -FilePath "node" -ArgumentList "$env:GITHUB_WORKSPACE\machine-console\console.js" -WindowStyle Hidden
           $ok = $false
