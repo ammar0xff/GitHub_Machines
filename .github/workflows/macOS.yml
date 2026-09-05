@@ -17,11 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install gotty
+      - name: Install ttyd
         run: |
-          curl -fsSL "https://github.com/yudai/gotty/releases/download/v1.0.1/gotty_darwin_amd64.tar.gz" -o gotty.tar.gz
-          tar -xzf gotty.tar.gz
-          sudo mv gotty /usr/local/bin
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_UPGRADE=1 brew install ttyd
 
       - name: "Install bore & cloudflared"
         run: |
@@ -43,7 +41,7 @@ jobs:
       - name: Start services
         run: |
           export TERM=xterm
-          nohup gotty -w --title-format "GitHub Machine - macOS" /bin/bash > /tmp/gotty.log 2>&1 &
+          nohup ttyd -W -p 8080 -b /term -t titleFixed="GitHub Machine - macOS" /bin/bash > /tmp/ttyd.log 2>&1 &
           caffeinate -dimsu &
           cat > /tmp/console.env <<EOF
           export PORT=8082
@@ -51,7 +49,6 @@ jobs:
           export LABEL="GitHub Machine - macOS"
           export USER=runner
           export PASS="${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
-          export TERM_STRIP=1
           export TTYD_PORT=8080
           EOF
           bash /tmp/console.env
