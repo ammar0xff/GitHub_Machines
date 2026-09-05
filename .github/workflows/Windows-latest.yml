@@ -56,6 +56,54 @@ jobs:
           Start-Sleep -Seconds 3
           Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}" -Force)
 
+      - name: Download & configure LCXL Remote Desk
+        run: |
+          # LCXL Remote Desk (lcxl-remote/lcxl-remote-desk-web, Apache-2.0): WebRTC-based
+          # remote desktop. The Tauri bundle ships lcxl-remote-desk-server.exe + the
+          # static web console, and its embedded signaling lets a browser dial straight
+          # in - probe of choice for the Windows embedded desktop.
+          Invoke-WebRequest "https://github.com/lcxl-remote/lcxl-remote-desk-web/releases/download/v0.0.1/tauri-windows-x86_64.zip" -OutFile lcxl.zip
+          Expand-Archive lcxl.zip -DestinationPath lcxl
+          $srv = Get-ChildItem -Recurse -Filter "lcxl-remote-desk-server.exe" | Select-Object -First 1
+          if (-not $srv) { Write-Error "lcxl-remote-desk-server.exe not found in bundle"; exit 1 }
+          $PASS = "${{ secrets.MACHINE_PASSWORD || 'P@ssw0rd!123' }}"
+          $cfg = "$env:GITHUB_WORKSPACE\lcxl\config.toml"
+          @"
+[system]
+port = 8091
+listen_addr_ipv4 = "0.0.0.0"
+enable_ipv6 = false
+
+[log]
+log_level = "info"
+
+[user]
+login_user_name = "runneradmin"
+login_password = "$PASS"
+
+[desk]
+video_fps = 30
+video_quality = 28
+show_mouse = true
+enable_dirty_rect = true
+
+[security]
+allow_remote_control = true
+allow_clipboard_sync = true
+allow_system_audio_capture = false
+allow_private_screen = false
+allow_whiteboard = false
+allow_terminal = true
+allow_file_browse = true
+allow_file_delete = false
+allow_file_transfer = false
+approval_timeout = 0
+
+[turn]
+enable_turn = true
+"@ | Set-Content -Path $cfg -Encoding utf8
+          Get-Content $cfg
+
       - name: Download cloudflared
         run: |
           Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile cloudflared.exe
@@ -94,6 +142,23 @@ jobs:
           }
           if (-not $ok) { Write-Error "console failed to start"; exit 1 }
 
+          # ---- LCXL Remote Desk probe: server on 8091 + its own cloudflared tunnel.
+          # Signaling hops the HTTPS tunnel; WebRTC media tries bare ICE to the
+          # runner (no public TURN available on hosted runners, LCXL relays UDP only).
+          $srv = Get-ChildItem -Recurse -Filter "lcxl-remote-desk-server.exe" | Select-Object -First 1
+          $env:LCXL_CFG = "$env:GITHUB_WORKSPACE\lcxl\config.toml"
+          Start-Process -FilePath $srv.FullName -ArgumentList @("-s","default","-c",$env:LCXL_CFG) -RedirectStandardOutput lcxl.out -RedirectStandardError lcxl.err -WindowStyle Hidden
+          $lcxlUp = $false
+          for ($n = 0; $n -lt 12 -and -not $lcxlUp; $n++) {
+            if ($n -gt 0) { Start-Sleep -Seconds 3 }
+            try { (Invoke-WebRequest "http://127.0.0.1:8091/api/init/requirements" -UseBasicParsing -TimeoutSec 5) | Out-Null; $lcxlUp = $true } catch { }
+          }
+          if (-not $lcxlUp) {
+            Write-Output "::warning::lcxl server not ready on 8091"
+            Get-Content lcxl.out,lcxl.err -ErrorAction SilentlyContinue
+          }
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList @("tunnel","--url","http://127.0.0.1:8091","--no-autoupdate") -RedirectStandardOutput cl1.out -RedirectStandardError cl1.err -WindowStyle Hidden
+
           Start-Process -FilePath ".\cloudflared.exe" -ArgumentList @("tunnel","--url","http://127.0.0.1:8082","--no-autoupdate") -RedirectStandardOutput cloudflared.out -RedirectStandardError cloudflared.err -WindowStyle Hidden
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","8082","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore8082.out -RedirectStandardError bore8082.err
           Start-Process -FilePath ".\bore.exe" -ArgumentList @("local","3389","--local-host","127.0.0.1","--to","bore.pub") -RedirectStandardOutput bore3389.out -RedirectStandardError bore3389.err
@@ -108,14 +173,20 @@ jobs:
             if ($raw -match "https://([a-z0-9-]+\.trycloudflare\.com)") { return $matches[0] }
             return $null
           }
+          function Get-CfHost2 {
+            $raw = (Get-Content cl1.out,cl1.err -Raw -ErrorAction SilentlyContinue)
+            if ($raw -match "https://([a-z0-9-]+\.trycloudflare\.com)") { return $matches[0] }
+            return $null
+          }
 
-          $c = $null; $b = $null; $r = $null
+          $c = $null; $b = $null; $r = $null; $l = $null
           $deadline = (Get-Date).AddSeconds(90)
-          while (-not ($c -and $b -and $r) -and (Get-Date) -lt $deadline) {
+          while (-not ($c -and $b -and $r -and $l) -and (Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 4
             if (-not $c) { $c = Get-CfHost }
             if (-not $b) { $b = Get-BoreHost "bore8082.err"; if (-not $b) { $b = Get-BoreHost "bore8082.out" } }
             if (-not $r) { $r = Get-BoreHost "bore3389.err"; if (-not $r) { $r = Get-BoreHost "bore3389.out" } }
+            if (-not $l) { $l = Get-CfHost2 }
           }
 
           $BASE = if ($c) { $c } elseif ($b) { "http://$b" } else { "" }
@@ -133,11 +204,16 @@ jobs:
             Write-Output "MAROHUB_DESKTOP=$RDP_URL"; Write-Output "::notice title=Desktop (embedded RDP)::$RDP_URL"
             Write-Output "MAROHUB_RDP=$r"; Write-Output "::notice title=Remote Desktop (native)::$r  (user runneradmin / password $PASS)"
           }
+          if ($l) {
+            $LCXL_URL = "$l"
+            Write-Output "MAROHUB_LCXL=$LCXL_URL"; Write-Output "::notice title=LCXL Remote Desk::$LCXL_URL  (user runneradmin / password $PASS)"
+          }
 
           $summary = "## Windows machine`n`n"
           $summary += "* **Console** (one URL - Desktop / Terminal / Files): $BASE`n"
           if ($r) { $summary += "* **Desktop** (embedded RDP): $BASE/rdp/index.html - user ``runneradmin``, password ``$PASS`` `n" }
           $summary += "* **Desktop** (native RDP client): $r - user ``runneradmin``, password ``$PASS`` `n"
+          if ($l) { $summary += "* **Desktop** (LCXL Remote Desk / WebRTC probe): $l - user ``runneradmin``, password ``$PASS`` `n" }
           $summary += "`n> The machine lives until this run ends or ~6h, whichever comes first."
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
@@ -153,6 +229,7 @@ jobs:
               $ep["MAROHUB_DESKTOP"] = "$BASE/rdp/index.html?user=runneradmin&pass=$PASS_ENC"
               $ep["MAROHUB_RDP"] = $r
             }
+            if ($l) { $ep["MAROHUB_LCXL"] = $l }
             $state = @{ run_id = $env:GITHUB_RUN_ID; endpoints = $ep } | ConvertTo-Json -Compress
             New-Item -ItemType Directory -Force -Path .machine-state | Out-Null
             Set-Content -Path .machine-state/windows.json -Value $state -NoNewline -Encoding utf8
