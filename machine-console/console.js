@@ -296,8 +296,8 @@ const server = http.createServer((req, res) => {
   if (u.startsWith("/term")) return proxyWeb(req, res, TTYD_PORT);
   if (u.startsWith("/files")) return proxyWeb(req, res, FB_PORT);
   if (u.startsWith("/vnc-websockify")) return proxyWeb(req, res, WS_PORT);
-  if (u.startsWith("/vnc/")) return serveStatic(res, u.slice("/vnc".length));
-  if (RDP && u.startsWith("/rdp")) return serveRdpStatic(res, u.slice("/rdp".length));
+  if (u.startsWith("/vnc/")) return serveStatic(res, u.slice("/vnc".length).split("?")[0]);
+  if (RDP && u.startsWith("/rdp")) return serveRdpStatic(res, u.slice("/rdp".length).split("?")[0]);
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("not found");
 });
