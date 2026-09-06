@@ -315,61 +315,6 @@ pre {
   margin: 0;
 }
 
-/* ------------------------------ credentials -------------------------------- */
-
-.creds {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.creds-head {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.creds-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.creds-row code {
-  font-size: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
-  word-break: break-all;
-}
-.creds-service {
-  color: var(--muted);
-}
-.creds-user,
-.creds-pass {
-  color: var(--code);
-}
-.creds-copy {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-.creds-copy:hover,
-.creds-copy:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 /* -------------------------------- buttons --------------------------------- */
 
 .btn {

@@ -19,11 +19,6 @@ const PORTAL_LABELS = {
   MAROHUB_DESKTOP: "Desktop",
   MAROHUB_RDP: "RDP",
 };
-const MACHINE_CREDS = {
-  ubuntu: [{ label: "Machine", user: "runner" }],
-  windows: [{ label: "Desktop", user: "runneradmin" }],
-  macos: [{ label: "Machine", user: "runner" }],
-};
 
 // Desktop transport each machine uses for its embedded Desktop portal: "vnc" or "rdp".
 const DESKTOP_TRANSPORT = {
@@ -69,7 +64,7 @@ function loadConfig() {
   return defaultConfig();
 }
 function defaultConfig() {
-  return { repo: "ammar0xff/GitHub_Machines", token: "", password: "P@ssw0rd!123" };
+  return { repo: "ammar0xff/GitHub_Machines", token: "" };
 }
 function persistConfig() {
   localStorage.setItem(LS_CONFIG, JSON.stringify(config));
@@ -572,35 +567,6 @@ function portalButtons(kind, s) {
   });
 }
 
-function credRows(kind) {
-  return (MACHINE_CREDS[kind] || [{ label: "user", user: "runner" }]).map((c) => ({
-    label: c.label,
-    user: c.user,
-    pass: config.password || "",
-  }));
-}
-
-function credentialsBlock(kind) {
-  const rows = credRows(kind);
-  const block = el("div", { className: "creds" }, [
-    el("span", { className: "creds-head" }, "Sign in"),
-  ]);
-  for (const r of rows) {
-    const row = el("div", { className: "creds-row" });
-    row.appendChild(el("code", { className: "creds-service" }, r.label));
-    row.appendChild(el("code", { className: "creds-user" }, r.user));
-    row.appendChild(el("code", { className: "creds-pass" }, r.pass));
-    const copy = el("button", {
-      className: "creds-copy",
-      title: "Copy " + r.label + " credentials",
-    }, "copy");
-    copy.addEventListener("click", () => copyText(r.user + " / " + r.pass));
-    row.appendChild(copy);
-    block.appendChild(row);
-  }
-  return block;
-}
-
 function renderAll() {
   Object.keys(MACHINES).forEach(renderCard);
 }
@@ -640,7 +606,6 @@ function renderCard(kind) {
   if (s.status === "ready" && Object.keys(s.endpoints).length) {
     body.appendChild(el("div", { className: "portals" }, portalButtons(kind, s)));
     body.appendChild(el("p", { className: "lifetime" }, "This machine stops at " + lifetimeUntil(s) + " or when the run ends"));
-    body.appendChild(credentialsBlock(kind));
     body.appendChild(primaryBtn(kind, "Stop machine", "stop", () => stopMachine(kind)));
   } else if (isActive(s) || s.status === "completed") {
     body.appendChild(el("div", { className: "minirow" }, [
