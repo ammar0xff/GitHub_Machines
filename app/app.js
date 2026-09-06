@@ -19,6 +19,11 @@ const PORTAL_LABELS = {
   MAROHUB_DESKTOP: "Desktop",
   MAROHUB_RDP: "RDP",
 };
+const CARD_PORTALS = {
+  ubuntu: ["MAROHUB_TERMINAL"],
+  macos: ["MAROHUB_TERMINAL"],
+  windows: ["MAROHUB_TERMINAL", "MAROHUB_DESKTOP"],
+};
 
 // Desktop transport each machine uses for its embedded Desktop portal: "vnc" or "rdp".
 const DESKTOP_TRANSPORT = {
@@ -526,7 +531,8 @@ function portalButtons(kind, s) {
   const seen = {};
   const items = [];
   const transport = DESKTOP_TRANSPORT[kind];
-  for (const p of PORTALS) {
+  for (const key of CARD_PORTALS[kind] || []) {
+    const p = { key, label: PORTAL_LABELS[key] };
     const url = s.endpoints[p.key];
     if (!url) continue;
     const label = PORTAL_LABELS[p.key];
@@ -567,6 +573,21 @@ function portalButtons(kind, s) {
   });
 }
 
+function rdpCreds(s) {
+  const url = s.endpoints.MAROHUB_DESKTOP || "";
+  let u = "", p = "";
+  try {
+    const q = new URLSearchParams(url.split("?")[1] || "");
+    u = q.get("user") || "";
+    p = q.get("pass") || "";
+  } catch (_) {}
+  if (!u && !p) return null;
+  return el("p", { className: "note-line", role: "note" }, [
+    document.createTextNode("RDP creds: "),
+    el("code", { className: "portal-url" }, u + " / " + p),
+  ]);
+}
+
 function renderAll() {
   Object.keys(MACHINES).forEach(renderCard);
 }
@@ -605,6 +626,8 @@ function renderCard(kind) {
 
   if (s.status === "ready" && Object.keys(s.endpoints).length) {
     body.appendChild(el("div", { className: "portals" }, portalButtons(kind, s)));
+    const rc = rdpCreds(s);
+    if (rc) body.appendChild(rc);
     body.appendChild(el("p", { className: "lifetime" }, "This machine stops at " + lifetimeUntil(s) + " or when the run ends"));
     body.appendChild(primaryBtn(kind, "Stop machine", "stop", () => stopMachine(kind)));
   } else if (isActive(s) || s.status === "completed") {
