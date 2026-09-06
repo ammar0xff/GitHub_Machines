@@ -33,6 +33,8 @@ const DESKTOP_TRANSPORT = {
 };
 
 const LIFETIME_MS = 6 * 60 * 60 * 1000; // ~6h bore relay window
+const WARN_SOON_MS = 60 * 60 * 1000; // expiring within 1h reads amber
+const WARN_DANGER_MS = 15 * 60 * 1000; // expiring within 15m reads red
 const LS_CONFIG = "machine-launcher-config";
 const LS_SESSIONS = "machine-launcher-sessions";
 let debugOpen = false; // set from main.js (debug toggle)
@@ -499,9 +501,19 @@ function bootTimerMs(s) {
 function updateRunningTimers() {
   for (const kind of Object.keys(MACHINES)) {
     const s = sessions[kind];
-    if (!isActive(s)) continue;
+    if (!s || (s.status !== "ready" && !isActive(s))) continue;
     const t = document.getElementById("timer-" + kind);
     if (t) t.textContent = mmss(bootTimerMs(s));
+    const ex = document.getElementById("expiry-" + kind);
+    if (ex) {
+      const rem = Math.max(0, (s.bootedAt || Date.now()) + LIFETIME_MS - Date.now());
+      ex.textContent = mmss(rem);
+      const life = ex.closest(".lifetime");
+      if (life) {
+        life.classList.toggle("warn", rem < WARN_SOON_MS);
+        life.classList.toggle("danger", rem < WARN_DANGER_MS);
+      }
+    }
   }
 }
 
@@ -557,16 +569,24 @@ function portalButtons(kind, s) {
         target: "_blank",
         rel: "noopener",
         title: "Open " + label + " in a new tab",
+        "aria-label": "Open " + label + " in a new tab",
       }, "open"));
     }
     const copy = el("button", {
       className: "portal-copy" + (isHttp ? "" : " wide"),
       title: "Copy " + label + " address",
+      "aria-label": "Copy " + label + " address",
     }, isHttp ? "copy" : "copy addr");
     copy.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       copyText(url);
+      copy.textContent = "copied";
+      copy.classList.add("copied");
+      setTimeout(() => {
+        copy.textContent = isHttp ? "copy" : "copy addr";
+        copy.classList.remove("copied");
+      }, 1200);
     });
     tile.appendChild(copy);
     return tile;
@@ -628,7 +648,7 @@ function renderCard(kind) {
     body.appendChild(el("div", { className: "portals" }, portalButtons(kind, s)));
     const rc = rdpCreds(s);
     if (rc) body.appendChild(rc);
-    body.appendChild(el("p", { className: "lifetime" }, "This machine stops at " + lifetimeUntil(s) + " or when the run ends"));
+    body.appendChild(expiryLine(kind, s));
     body.appendChild(primaryBtn(kind, "Stop machine", "stop", () => stopMachine(kind)));
   } else if (isActive(s) || s.status === "completed") {
     body.appendChild(el("div", { className: "minirow" }, [
@@ -680,9 +700,15 @@ function stateLabel(s) {
   if (s.status === "completed") return "DONE";
   return "IDLE";
 }
-function lifetimeUntil(s) {
-  const end = new Date((s.bootedAt || Date.now()) + LIFETIME_MS);
-  return end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function expiryLine(kind, s) {
+  const endAt = new Date((s.bootedAt || Date.now()) + LIFETIME_MS);
+  const p = el("p", { className: "lifetime" });
+  p.appendChild(document.createTextNode("expires in "));
+  const t = el("span", { id: "expiry-" + kind, className: "timer", "aria-hidden": "true" });
+  t.textContent = mmss(Math.max(0, endAt.getTime() - Date.now()));
+  p.appendChild(t);
+  p.appendChild(document.createTextNode(" · " + endAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
+  return p;
 }
 
 function primaryBtn(kind, label, style, fn) {
