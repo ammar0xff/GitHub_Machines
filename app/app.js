@@ -43,6 +43,7 @@ let debugOpen = false; // set from main.js (debug toggle)
 
 let sessionGen = 1;
 const config = loadConfig();
+if (!config.token) config.token = sessionStorage.getItem(LS_CONFIG + "-token") || "";
 const sessions = loadSessions();
 Object.keys(MACHINES).forEach((k) => {
   if (!sessions[k] || typeof sessions[k] !== "object") sessions[k] = freshSession();
@@ -66,7 +67,11 @@ function freshSession() {
 function loadConfig() {
   try {
     const raw = localStorage.getItem(LS_CONFIG);
-    if (raw) return Object.assign(defaultConfig(), JSON.parse(raw));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const base = defaultConfig();
+      return { repo: parsed.repo ?? base.repo, token: parsed.token ?? base.token, password: parsed.password ?? base.password };
+    }
   } catch (_) {}
   return defaultConfig();
 }
@@ -74,7 +79,10 @@ function defaultConfig() {
   return { repo: "ammar0xff/GitHub_Machines", token: "" };
 }
 function persistConfig() {
-  localStorage.setItem(LS_CONFIG, JSON.stringify(config));
+  const { token, ...rest } = config;
+  localStorage.setItem(LS_CONFIG, JSON.stringify(rest));
+  if (token) sessionStorage.setItem(LS_CONFIG + "-token", token);
+  else sessionStorage.removeItem(LS_CONFIG + "-token");
 }
 function loadSessions() {
   try {
